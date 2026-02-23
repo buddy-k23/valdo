@@ -634,21 +634,21 @@ class ValidationReporter:
         good_rows = max(total_rows - errored_rows, 0)
 
         kpis = [
-            ("Quality", f"{metrics.get('quality_score', 0)}%"),
-            ("Rows", f"{total_rows:,}"),
-            ("Errors", f"{results.get('error_count', 0):,}"),
-            ("Warnings", f"{results.get('warning_count', 0):,}"),
-            ("Good Rows", f"{good_rows:,}"),
-            ("Errored Rows", f"{errored_rows:,}"),
-            ("Completeness", f"{metrics.get('completeness_pct', 0)}%"),
-            ("Uniqueness", f"{metrics.get('uniqueness_pct', 0)}%"),
-            ("Duplicates", f"{dup.get('duplicate_rows', 0):,}"),
-            ("Columns", f"{metrics.get('total_columns', 0):,}"),
+            ("Quality", f"{metrics.get('quality_score', 0)}%", "Overall score combining completeness, uniqueness, and validation outcomes."),
+            ("Rows", f"{total_rows:,}", "Total records processed in this validation run."),
+            ("Errors", f"{results.get('error_count', 0):,}", "Count of validation errors."),
+            ("Warnings", f"{results.get('warning_count', 0):,}", "Count of validation warnings."),
+            ("Good Rows", f"{good_rows:,}", "Rows without reported validation issues."),
+            ("Errored Rows", f"{errored_rows:,}", "Rows with one or more reported validation issues."),
+            ("Completeness", f"{metrics.get('completeness_pct', 0)}%", "Percent of non-null/non-empty cells across the dataset."),
+            ("Uniqueness", f"{metrics.get('uniqueness_pct', 0)}%", "Percent of rows that are unique (non-duplicate)."),
+            ("Duplicates", f"{dup.get('duplicate_rows', 0):,}", "Number of detected duplicate rows."),
+            ("Columns", f"{metrics.get('total_columns', 0):,}", "Total columns in the parsed dataset."),
         ]
 
         blocks = ''.join(
-            f'<div class="dashboard-kpi"><div class="k">{k}</div><div class="v">{v}</div></div>'
-            for k, v in kpis
+            f'<div class="dashboard-kpi" title="{tip}"><div class="k">{k}</div><div class="v">{v}</div></div>'
+            for k, v, tip in kpis
         )
 
         return f"""
