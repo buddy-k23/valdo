@@ -20,6 +20,7 @@ This is the **single source of truth** for docs navigation.
 - `docs/MAPPING_SCHEMA.md`
 - `docs/VALIDATION_RULES.md`
 - `docs/FIXED_WIDTH_MAPPING_CHECKLIST.md` — checklist + failure playbook
+- `docs/FIXED_WIDTH_MULTITYPE_IMPLEMENTATION_CHECKLIST.md` — architect-gated task plan (tests + review + docs)
 - `docs/TRANSFORMATION_TYPES.md`
 
 ## Deployment
@@ -34,6 +35,7 @@ This is the **single source of truth** for docs navigation.
 ## Contracts
 - `docs/contracts/business_rules_v1.md`
 - `docs/contracts/validation_result_v1.md`
+- `docs/contracts/fixed_width_multitype_v2.md`
 
 ---
 
