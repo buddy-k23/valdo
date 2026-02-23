@@ -396,6 +396,16 @@ Use the JSON schema as reference: [`config/schemas/universal_mapping_schema.json
 
 ---
 
+## Fixed-Width v2 Normalization (Task 1)
+
+For upcoming multi-record-type fixed-width support, legacy fixed-width mappings are normalized internally to a v2 shape with:
+- `record_types` (legacy becomes one `DETAIL` type with `classification.kind=default`)
+- `file_rules` defaults (header/trailer remain optional unless configured)
+
+See:
+- `docs/contracts/fixed_width_multitype_v2.md`
+- `docs/adr/0003-fixed-width-v2-normalization.md`
+
 ## Next Steps
 
 1. **Create your first mapping** from an Excel template
