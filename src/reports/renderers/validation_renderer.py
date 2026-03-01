@@ -8,7 +8,9 @@ from datetime import datetime
 from pathlib import Path
 
 _CHART_JS_PATH = Path(__file__).parent.parent / "static" / "chart.umd.min.js"
-_CHART_JS_INLINE = _CHART_JS_PATH.read_text(encoding="utf-8") if _CHART_JS_PATH.exists() else ""
+if not _CHART_JS_PATH.exists():
+    raise FileNotFoundError(f"Chart.js bundle not found: {_CHART_JS_PATH}. Re-install the package.")
+_CHART_JS_INLINE = _CHART_JS_PATH.read_text(encoding="utf-8")
 
 
 class ValidationReporter:

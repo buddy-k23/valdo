@@ -1,6 +1,9 @@
 """Tests that Chart.js is bundled inline and no CDN URLs are present in generated HTML."""
 
+import re
+
 from src.reports.renderers.validation_renderer import ValidationReporter, _CHART_JS_INLINE
+from src.reports.renderers.comparison_renderer import HTMLReporter
 
 
 def _sample_result():
@@ -81,8 +84,33 @@ def test_no_external_script_src_in_generated_html(tmp_path):
     reporter = ValidationReporter()
     reporter.generate(_sample_result(), str(out))
     html = out.read_text(encoding="utf-8")
-    import re
     external_scripts = re.findall(r'<script[^>]+src=["\']https?://', html, re.IGNORECASE)
     assert not external_scripts, (
         f"Found external script tag(s) in generated HTML: {external_scripts}"
+    )
+
+
+def _sample_comparison_result():
+    return {
+        "total_rows_file1": 2,
+        "total_rows_file2": 2,
+        "matching_rows": 2,
+        "only_in_file1": [],
+        "only_in_file2": [],
+        "differences": [],
+    }
+
+
+def test_comparison_renderer_no_cdn_url(tmp_path):
+    """HTMLReporter (comparison_renderer) must not reference cdn.jsdelivr.net or load scripts via http."""
+    out = tmp_path / "comparison_report.html"
+    reporter = HTMLReporter()
+    reporter.generate(_sample_comparison_result(), str(out))
+    html = out.read_text(encoding="utf-8")
+    assert "cdn.jsdelivr.net" not in html, (
+        "Comparison report still references cdn.jsdelivr.net — no external CDN sources allowed."
+    )
+    external_scripts = re.findall(r'<script[^>]+src=["\']https?://', html, re.IGNORECASE)
+    assert not external_scripts, (
+        f"Comparison report contains external <script src='http...'> tag(s): {external_scripts}"
     )
