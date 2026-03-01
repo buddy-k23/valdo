@@ -75,6 +75,7 @@ data/samples/*.csv
 /reports/
 *.html
 !docs/*.html
+!src/reports/static/ui.html
 
 # Temporary files
 *.tmp

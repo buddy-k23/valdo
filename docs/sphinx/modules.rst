@@ -117,6 +117,16 @@ Configuration & Validators
    :members:
    :undoc-members:
 
+API Routers
+-----------
+
+Web UI
+~~~~~~
+
+.. automodule:: src.api.routers.ui
+   :members:
+   :undoc-members:
+
 Reporting & Utilities
 ---------------------
 

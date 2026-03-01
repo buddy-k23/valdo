@@ -6,6 +6,8 @@
 flowchart TD
     U[Users / CI / Schedulers] --> C[CLI: cm3-batch]
     U --> A[REST API: FastAPI]
+    U --> WEB[Web UI\n/ui single-page app]
+    WEB --> A
 
     C --> CMDS[Command Layer\nsrc/commands/*]
     A --> API[API Routers\nsrc/api/routers/*]
@@ -71,6 +73,8 @@ sequenceDiagram
 - `src/reports/` — unified report rendering/adapters/contracts
 - `src/reporters/` + `src/reporting/` — backward-compatible shims (deprecated)
 - `src/quality/gx_checkpoint1.py` — Great Expectations checkpoint integration
+
+**Web UI**: Single-page HTML UI at `/ui`. Vanilla JS calls existing API endpoints. No framework or build step. Run history logged to `reports/run_history.json`.
 
 **Row tracking**: All parsers append `__source_row__` (1-indexed physical line number) to output DataFrames. This column is preserved through the comparison and reporting layers and stripped before Oracle operations.
 

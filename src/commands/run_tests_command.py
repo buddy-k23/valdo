@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -295,6 +297,80 @@ def _run_single_test(
     }
 
 
+def _append_run_history(
+    output_dir: str,
+    run_id: str,
+    suite: Any,
+    results: list[dict[str, Any]],
+    suite_report_path: str,
+    env: str,
+) -> None:
+    """Append a run summary entry to ``reports/run_history.json``.
+
+    Resolves ``overall_status`` from the individual test results:
+
+    * ``PASS`` — every test passed or was skipped.
+    * ``FAIL`` — at least one test has status ``ERROR``.
+    * ``PARTIAL`` — a mix of passing and failing tests (no ERRORs).
+
+    The history file is created if it does not exist.  Corrupt JSON is
+    silently replaced with a fresh list containing only the new entry.
+
+    Args:
+        output_dir: Directory where the suite HTML report was written.
+            Used to resolve the history file path one level up.
+        run_id: Unique identifier for this suite run.
+        suite: The ``TestSuiteConfig`` instance for the run.
+        results: List of per-test result dicts returned by ``_run_single_test``.
+        suite_report_path: Absolute path to the suite-level HTML report file.
+        env: Effective environment string (resolved from CLI flag or suite config).
+    """
+    history_path = Path(output_dir) / ".." / "reports" / "run_history.json"
+    history_path = history_path.resolve()
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+
+    statuses = {r["status"] for r in results}
+    error_statuses = {"FAIL", "ERROR"}
+    pass_statuses   = {"PASS", "SKIPPED"}
+
+    if statuses <= pass_statuses:
+        overall_status = "PASS"
+    elif statuses & error_statuses and not (statuses - error_statuses - pass_statuses):
+        # Some errors and the rest are pass/skipped — at least one non-error: PARTIAL
+        if statuses & pass_statuses:
+            overall_status = "PARTIAL"
+        else:
+            overall_status = "FAIL"
+    else:
+        overall_status = "PARTIAL"
+
+    # Re-check: if ALL results are ERROR/FAIL with no passes it is a full FAIL
+    if not (statuses & pass_statuses):
+        overall_status = "FAIL"
+
+    entry: dict[str, Any] = {
+        "run_id": run_id,
+        "suite_name": suite.name,
+        "environment": env,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "status": overall_status,
+        "report_url": f"/uploads/{Path(suite_report_path).name}",
+        "pass_count":  sum(1 for r in results if r["status"] == "PASS"),
+        "fail_count":  sum(1 for r in results if r["status"] in ("FAIL", "ERROR")),
+        "skip_count":  sum(1 for r in results if r["status"] == "SKIPPED"),
+        "total_count": len(results),
+    }
+
+    existing: list[dict[str, Any]] = []
+    if history_path.exists():
+        try:
+            existing = json.loads(history_path.read_text(encoding="utf-8"))
+        except Exception:
+            existing = []
+    existing.append(entry)
+    history_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+
+
 def run_tests_command(
     suite_path: str,
     params_str: str,
@@ -350,5 +426,14 @@ def run_tests_command(
         environment=env or suite.environment,
     )
     click.echo(f"Suite report written to: {suite_report_path}")
+
+    _append_run_history(
+        output_dir=output_dir,
+        run_id=run_id,
+        suite=suite,
+        results=results,
+        suite_report_path=suite_report_path,
+        env=env or suite.environment,
+    )
 
     return results

@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.api.routers import mappings, files, system
+from src.api.routers.ui import router as ui_router
 from src.utils.cleanup import cleanup_old_files
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ app.include_router(
     prefix="/api/v1/system",
     tags=["System"]
 )
+app.include_router(ui_router)
 
 # Root endpoint
 @app.get("/", tags=["Root"])

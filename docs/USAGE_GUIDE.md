@@ -1060,3 +1060,15 @@ response = requests.get("http://localhost:8000/api/v1/system/health")
 ---
 
 **Need Help?** Check the [Swagger UI](http://localhost:8000/docs) for interactive API documentation!
+
+---
+
+## Web UI
+
+Start the API server and open `http://localhost:8000/ui` in your browser.
+
+**Quick Test** — Upload a batch file, select a mapping, and click Validate or Compare.
+The HTML report opens in a new tab.
+
+**Recent Runs** — Shows the last 20 test suite runs with pass/fail status and links
+to suite reports.
