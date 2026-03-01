@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -10,6 +11,7 @@ import click
 import yaml
 
 from src.contracts.test_suite import TestConfig, TestSuiteConfig
+from src.reports.renderers.suite_renderer import SuiteReporter
 from src.utils.params import resolve_params
 
 
@@ -254,5 +256,20 @@ def run_tests_command(
         resolved_file = resolve_params(test.file, params)
         result = _run_single_test(test, resolved_file, output_dir, run_id=run_id)
         results.append(result)
+
+    # Write the suite-level HTML summary report.
+    safe_suite_name = re.sub(r"[^\w\-]", "_", suite.name)
+    suite_report_path = str(
+        Path(output_dir) / f"{safe_suite_name}_{run_id}_suite.html"
+    )
+    os.makedirs(output_dir, exist_ok=True)
+    SuiteReporter().generate(
+        suite_name=suite.name,
+        results=results,
+        output_path=suite_report_path,
+        run_id=run_id,
+        environment=env or suite.environment,
+    )
+    click.echo(f"Suite report written to: {suite_report_path}")
 
     return results
