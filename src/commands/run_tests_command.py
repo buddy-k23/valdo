@@ -371,6 +371,71 @@ def _append_run_history(
     history_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
 
+def run_suite_from_path(
+    suite_path: str,
+    params: dict[str, str],
+    env: str,
+    output_dir: str,
+) -> list[dict[str, Any]]:
+    """Run a test suite from a YAML file path with a pre-built params dict.
+
+    This is a thin wrapper around the core suite-run logic that accepts a
+    ready-made ``params`` dict (rather than a raw ``params_str`` string).
+    Both the file-watcher and the webhook trigger endpoint call this function,
+    ensuring CLI/API parity while keeping the CLI ``run-tests`` command intact.
+
+    Args:
+        suite_path: Absolute or relative path to the suite YAML file.
+        params: Dict of substitution parameters (e.g. ``{"run_date": "20260301"}``).
+        env: Environment name (e.g. ``"dev"``, ``"staging"``).
+        output_dir: Directory where HTML reports and run history are written.
+
+    Returns:
+        List of per-test result dicts (see :func:`_run_single_test`).
+    """
+    with open(suite_path, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f)
+
+    suite = TestSuiteConfig(**raw)
+
+    run_id = str(uuid.uuid4())
+    merged_params = {
+        "run_id": run_id,
+        "environment": env or suite.environment,
+        **params,
+    }
+
+    results: list[dict[str, Any]] = []
+    for test in suite.tests:
+        resolved_file = resolve_params(test.file, merged_params)
+        result = _run_single_test(test, resolved_file, output_dir, run_id=run_id)
+        results.append(result)
+
+    safe_suite_name = re.sub(r"[^\w\-]", "_", suite.name)
+    suite_report_path = str(
+        Path(output_dir) / f"{safe_suite_name}_{run_id}_suite.html"
+    )
+    os.makedirs(output_dir, exist_ok=True)
+    SuiteReporter().generate(
+        suite_name=suite.name,
+        results=results,
+        output_path=suite_report_path,
+        run_id=run_id,
+        environment=env or suite.environment,
+    )
+
+    _append_run_history(
+        output_dir=output_dir,
+        run_id=run_id,
+        suite=suite,
+        results=results,
+        suite_report_path=suite_report_path,
+        env=env or suite.environment,
+    )
+
+    return results
+
+
 def run_tests_command(
     suite_path: str,
     params_str: str,
@@ -406,34 +471,4 @@ def run_tests_command(
             )
         return []
 
-    results: list[dict[str, Any]] = []
-    for test in suite.tests:
-        resolved_file = resolve_params(test.file, params)
-        result = _run_single_test(test, resolved_file, output_dir, run_id=run_id)
-        results.append(result)
-
-    # Write the suite-level HTML summary report.
-    safe_suite_name = re.sub(r"[^\w\-]", "_", suite.name)
-    suite_report_path = str(
-        Path(output_dir) / f"{safe_suite_name}_{run_id}_suite.html"
-    )
-    os.makedirs(output_dir, exist_ok=True)
-    SuiteReporter().generate(
-        suite_name=suite.name,
-        results=results,
-        output_path=suite_report_path,
-        run_id=run_id,
-        environment=env or suite.environment,
-    )
-    click.echo(f"Suite report written to: {suite_report_path}")
-
-    _append_run_history(
-        output_dir=output_dir,
-        run_id=run_id,
-        suite=suite,
-        results=results,
-        suite_report_path=suite_report_path,
-        env=env or suite.environment,
-    )
-
-    return results
+    return run_suite_from_path(suite_path, params=user_params, env=env, output_dir=output_dir)

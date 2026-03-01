@@ -9,6 +9,13 @@ Core CLI
    :undoc-members:
    :show-inheritance:
 
+Commands
+~~~~~~~~
+
+.. automodule:: src.commands.watch_command
+   :members:
+   :undoc-members:
+
 Database
 --------
 
@@ -124,6 +131,13 @@ Web UI
 ~~~~~~
 
 .. automodule:: src.api.routers.ui
+   :members:
+   :undoc-members:
+
+Runs
+~~~~
+
+.. automodule:: src.api.routers.runs
    :members:
    :undoc-members:
 

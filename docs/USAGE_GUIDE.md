@@ -1063,6 +1063,42 @@ response = requests.get("http://localhost:8000/api/v1/system/health")
 
 ---
 
+## CI/CD Integration
+
+### Trigger File Watcher
+
+Drop a file named `batch_complete_YYYYMMDD.trigger` in your watch directory when the
+batch job completes. The watcher picks it up, runs the matching suite, and deletes the trigger.
+
+```bash
+cm3-batch watch \
+  --dir /batch/triggers \
+  --suites config/test_suites/ \
+  --env dev \
+  --output-dir reports \
+  --interval 30
+```
+
+### Webhook Trigger
+
+Call the API from GitLab/Azure after the batch completes:
+
+```bash
+curl -X POST http://cm3-server:8000/api/v1/runs/trigger \
+  -H "Content-Type: application/json" \
+  -d '{"suite": "config/test_suites/p327_uat.yaml", "params": {"run_date": "20260301"}, "env": "dev"}'
+```
+
+Check status: `GET /api/v1/runs/{run_id}`
+
+### Pipeline Templates
+
+Copy from the `ci/` directory:
+- `ci/gitlab-cm3-validate.yml` — GitLab CI include template
+- `ci/azure-cm3-validate.yml` — Azure DevOps pipeline task
+
+---
+
 ## Web UI
 
 Start the API server and open `http://localhost:8000/ui` in your browser.

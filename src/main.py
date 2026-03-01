@@ -702,6 +702,22 @@ def convert_suite(input_path, output_dir, template_path):
         sys.exit(1)
 
 
+@cli.command('watch')
+@click.option('--dir', 'watch_dir', required=True, type=click.Path(),
+              help='Directory to watch for .trigger files')
+@click.option('--suites', 'suites_dir', required=True, type=click.Path(),
+              help='Directory containing suite YAML files')
+@click.option('--env', default='dev', show_default=True, help='Environment name')
+@click.option('--output-dir', default='reports', show_default=True, type=click.Path(),
+              help='Directory for test reports')
+@click.option('--interval', default=30, show_default=True, type=int,
+              help='Poll interval in seconds')
+def watch(watch_dir, suites_dir, env, output_dir, interval):
+    """Watch a directory for batch trigger files and run matching test suites."""
+    from src.commands.watch_command import run_watch
+    run_watch(watch_dir, suites_dir, env, output_dir, poll_interval=interval)
+
+
 @cli.command('run-tests')
 @click.option('--suite', '-s', required=True, help='Path to test suite YAML file')
 @click.option('--params', '-p', default='', help='Parameters as key=value,key2=value2')

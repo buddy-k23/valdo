@@ -9,10 +9,16 @@ flowchart TD
     U --> WEB[Web UI\n/ui single-page app]
     WEB --> A
 
+    BATCH[Java Batch Process] -->|trigger file| WATCH[cm3-batch watch]
+    BATCH -->|webhook| RUNS[/api/v1/runs/trigger]
+
     C --> CMDS[Command Layer\nsrc/commands/*]
     A --> API[API Routers\nsrc/api/routers/*]
 
-    CMDS --> SVCS[Service Layer\nsrc/services/*]
+    WATCH --> SVCS[Service Layer\nsrc/services/*]
+    RUNS --> SVCS
+
+    CMDS --> SVCS
     API --> SVCS
 
     CMDS --> WF[Workflow Engine\nsrc/workflows/*]
@@ -75,6 +81,8 @@ sequenceDiagram
 - `src/quality/gx_checkpoint1.py` — Great Expectations checkpoint integration
 
 **Web UI**: Single-page HTML UI at `/ui`. Vanilla JS calls existing API endpoints. No framework or build step. Run history logged to `reports/run_history.json`.
+
+**CI/CD Integration**: `cm3-batch watch` polls a trigger directory for `.trigger` files dropped by the Java batch process and runs the matching suite automatically. `POST /api/v1/runs/trigger` provides a webhook for pipeline-based triggering. Templates in `ci/` for GitLab CI and Azure DevOps.
 
 **Row tracking**: All parsers append `__source_row__` (1-indexed physical line number) to output DataFrames. This column is preserved through the comparison and reporting layers and stripped before Oracle operations.
 
