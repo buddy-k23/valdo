@@ -72,6 +72,8 @@ sequenceDiagram
 - `src/reporters/` + `src/reporting/` — backward-compatible shims (deprecated)
 - `src/quality/gx_checkpoint1.py` — Great Expectations checkpoint integration
 
+**Row tracking**: All parsers append `__source_row__` (1-indexed physical line number) to output DataFrames. This column is preserved through the comparison and reporting layers and stripped before Oracle operations.
+
 ## Design Principles
 - Mapping-driven processing (no hardcoded file layouts)
 - Fail-fast exit codes for CI correctness

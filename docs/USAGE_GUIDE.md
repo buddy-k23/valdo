@@ -101,6 +101,8 @@ cm3-batch parse -f data/samples/p327_test_data.txt \
   -o reports/p327_parsed_chunked.csv
 ```
 
+> All exported CSV files include a `source_row` column identifying the original line number in the source file. This column is also shown in HTML error and difference tables for easy trace-back.
+
 ### 3. File Comparison
 
 Compare two files and generate a report:
@@ -232,6 +234,8 @@ cm3-batch convert-rules \
 - `-t, --template`: Excel (.xlsx) or CSV (.csv) template file
 - `-o, --output`: Output JSON rules file
 - `-s, --sheet`: Sheet name (for Excel, optional)
+
+> All exported CSV files include a `source_row` column identifying the original line number in the source file. This column is also shown in HTML error and difference tables for easy trace-back.
 
 ### 6. Validation
 

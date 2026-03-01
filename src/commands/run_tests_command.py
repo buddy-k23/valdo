@@ -18,7 +18,21 @@ from src.utils.params import resolve_params
 def _run_oracle_vs_file_test(
     test: TestConfig, resolved_file: str, output_dir: str, run_id: str
 ) -> dict[str, Any]:
-    """Execute oracle_vs_file test: run SQL query, write temp CSV, compare against batch file."""
+    """Execute oracle_vs_file test: run SQL query, write temp CSV, compare against batch file.
+
+    The ``__source_row__`` column added by parsers is stripped before the
+    Oracle comparison so it does not cause schema mismatches with Oracle
+    result sets that do not contain this internal tracking column.
+
+    Args:
+        test: Test configuration from the suite YAML.
+        resolved_file: Absolute path to the resolved batch file.
+        output_dir: Directory where intermediate Oracle CSV is written.
+        run_id: Unique identifier for this suite run.
+
+    Returns:
+        Dict containing comparison results or an error/skipped sentinel dict.
+    """
     if not (os.getenv("ORACLE_USER") and os.getenv("ORACLE_DSN")):
         return {
             "name": test.name,
@@ -50,6 +64,71 @@ def _run_oracle_vs_file_test(
         extractor.extract_to_file(query, str(temp_file), params=oracle_params)
 
         keys_str = ",".join(test.key_columns) if test.key_columns else None
+
+        # Parse the batch file so we can strip __source_row__ before comparing
+        # against Oracle data, which does not contain this internal column.
+        import json as _json
+        import pandas as _pd
+        from src.parsers.format_detector import FormatDetector as _FormatDetector
+        from src.parsers.fixed_width_parser import FixedWidthParser as _FWParser
+
+        mapping_config = None
+        if test.mapping:
+            _mpath = test.mapping
+            # Resolve relative mapping path if needed
+            if not os.path.isabs(_mpath):
+                from src.config.loader import ConfigLoader
+                try:
+                    mapping_config = ConfigLoader().load_mapping(_mpath)
+                except Exception:
+                    pass
+            if mapping_config is None:
+                try:
+                    with open(_mpath, "r", encoding="utf-8") as _mf:
+                        mapping_config = _json.load(_mf)
+                except Exception:
+                    pass
+
+        _detector = _FormatDetector()
+        try:
+            _parser_class = _detector.get_parser_class(resolved_file)
+        except Exception:
+            _parser_class = None
+
+        if _parser_class == _FWParser and mapping_config and mapping_config.get("fields"):
+            _specs = []
+            _pos = 0
+            for _f in mapping_config.get("fields", []):
+                _name = _f["name"]
+                _len = int(_f["length"])
+                _start = int(_f["position"]) - 1 if _f.get("position") is not None else _pos
+                _end = _start + _len
+                _specs.append((_name, _start, _end))
+                _pos = _end
+            _parser = _FWParser(resolved_file, _specs)
+        elif _parser_class is not None:
+            _parser = _parser_class(resolved_file)
+        else:
+            _parser = None
+
+        if _parser is not None:
+            try:
+                _df = _parser.parse()
+                # Strip the internal row-tracking column before Oracle comparison
+                # to prevent schema mismatches with Oracle result sets.
+                _df = _df.drop(columns=['__source_row__'], errors='ignore')
+
+                _oracle_df = _pd.read_csv(str(temp_file), dtype=str, keep_default_na=False)
+
+                from src.comparators.file_comparator import FileComparator as _FC
+                _key_cols = test.key_columns or None
+                _comparator = _FC(_df, _oracle_df, key_columns=_key_cols)
+                svc_result = _comparator.compare(detailed=True)
+                svc_result["duration_seconds"] = time.time() - t0
+                return svc_result
+            except Exception:
+                pass  # Fall through to the service-level comparison below
+
         from src.services.compare_service import run_compare_service
 
         svc_result = run_compare_service(
