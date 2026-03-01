@@ -9,7 +9,11 @@ from pathlib import Path
 
 _CHART_JS_PATH = Path(__file__).parent.parent / "static" / "chart.umd.min.js"
 if not _CHART_JS_PATH.exists():
-    raise FileNotFoundError(f"Chart.js bundle not found: {_CHART_JS_PATH}. Re-install the package.")
+    raise FileNotFoundError(
+        f"Chart.js bundle not found: {_CHART_JS_PATH}. "
+        "If developing locally, pull the latest commits. "
+        "If running from an installed package, re-install from the latest release."
+    )
 _CHART_JS_INLINE = _CHART_JS_PATH.read_text(encoding="utf-8")
 
 

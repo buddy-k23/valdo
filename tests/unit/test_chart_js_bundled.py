@@ -63,8 +63,9 @@ def test_generated_html_contains_chart_js_inline(tmp_path):
     reporter.generate(_sample_result(), str(out))
     html = out.read_text(encoding="utf-8")
     # The Chart.js UMD bundle defines the global `Chart` object.
-    assert "Chart" in html, (
-        "Generated HTML does not contain 'Chart' — Chart.js source does not appear to be embedded."
+    assert "!function" in html or "Chart.register" in html, (
+        "Generated HTML does not contain Chart.js UMD source — "
+        "ensure _CHART_JS_INLINE is being embedded in the <script> block."
     )
 
 
