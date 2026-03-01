@@ -19,11 +19,13 @@ def resolve_params(template: str, params: dict) -> str:
     today = date.today()
     yesterday = today - timedelta(days=1)
 
+    today_str = today.strftime("%Y%m%d")
     builtins = {
-        "today": today.strftime("%Y%m%d"),
+        "today": today_str,
         "yesterday": yesterday.strftime("%Y%m%d"),
         "run_id": str(uuid.uuid4()),
         "environment": "",
+        "run_date": today_str,  # same as ${today} — YYYYMMDD — user can override via --params run_date=...
     }
 
     # Caller-supplied params override builtins (except run_id which is generated

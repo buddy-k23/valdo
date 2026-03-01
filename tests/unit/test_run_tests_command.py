@@ -197,25 +197,28 @@ class TestDryRun:
         assert results == []
         mock_svc.assert_not_called()
 
-    def test_dry_run_prints_resolved_file(self, tmp_path, capsys):
+    def test_dry_run_prints_resolved_file(self, tmp_path):
         suite_file = tmp_path / "suite.yaml"
         suite_file.write_text(MINIMAL_SUITE_YAML)
         today_str = date.today().strftime("%Y%m%d")
 
-        from src.commands.run_tests_command import run_tests_command
+        from src.main import cli
 
-        run_tests_command(
-            suite_path=str(suite_file),
-            params_str="",
-            env="dev",
-            output_dir=str(tmp_path / "reports"),
-            dry_run=True,
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "run-tests",
+                "--suite", str(suite_file),
+                "--env", "dev",
+                "--output-dir", str(tmp_path / "reports"),
+                "--dry-run",
+            ],
         )
 
-        captured = capsys.readouterr()
-        assert "Minimal Suite" in captured.out
-        assert today_str in captured.out
-        assert "file.dat" in captured.out
+        assert "Minimal Suite" in result.output
+        assert today_str in result.output
+        assert "file.dat" in result.output
 
 
 # ---------------------------------------------------------------------------

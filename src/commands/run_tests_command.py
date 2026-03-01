@@ -13,6 +13,66 @@ from src.contracts.test_suite import TestConfig, TestSuiteConfig
 from src.utils.params import resolve_params
 
 
+def _run_oracle_vs_file_test(
+    test: TestConfig, resolved_file: str, output_dir: str, run_id: str
+) -> dict[str, Any]:
+    """Execute oracle_vs_file test: run SQL query, write temp CSV, compare against batch file."""
+    if not (os.getenv("ORACLE_USER") and os.getenv("ORACLE_DSN")):
+        return {
+            "name": test.name,
+            "type": test.type,
+            "status": "SKIPPED",
+            "detail": "Oracle not configured — set ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN",
+            "total_rows": 0,
+            "error_count": 0,
+            "warning_count": 0,
+            "duration_seconds": 0.0,
+        }
+
+    t0 = time.time()
+    try:
+        from src.database.connection import OracleConnection
+        from src.database.extractor import DataExtractor
+
+        query = test.oracle_query or ""
+        if Path(query.strip()).suffix == ".sql" and Path(query.strip()).exists():
+            query = Path(query.strip()).read_text()
+
+        conn = OracleConnection.from_env()
+        extractor = DataExtractor(conn)
+        temp_file = (
+            Path(output_dir)
+            / f"oracle_{run_id}_{test.name.replace(' ', '_')[:20]}.csv"
+        )
+        oracle_params = test.oracle_params or {}
+        extractor.extract_to_file(query, str(temp_file), params=oracle_params)
+
+        keys_str = ",".join(test.key_columns) if test.key_columns else None
+        from src.services.compare_service import run_compare_service
+
+        svc_result = run_compare_service(
+            file1=resolved_file,
+            file2=str(temp_file),
+            keys=keys_str,
+            mapping=test.mapping,
+            detailed=True,
+            use_chunked=False,
+        )
+        svc_result["duration_seconds"] = time.time() - t0
+        return svc_result
+    except Exception as e:
+        return {
+            "name": test.name,
+            "type": test.type,
+            "status": "ERROR",
+            "detail": str(e),
+            "total_rows": 0,
+            "error_count": 0,
+            "warning_count": 0,
+            "duration_seconds": time.time() - t0,
+        }
+
+
 def _parse_params_str(params_str: str) -> dict[str, str]:
     """Parse 'key=value,key2=value2' string into a dict."""
     result: dict[str, str] = {}
@@ -51,21 +111,23 @@ def _check_thresholds(test: TestConfig, result: dict[str, Any]) -> tuple[str, st
         )
 
     if test.type == "oracle_vs_file":
-        missing_rows = result.get("missing_rows", 0) or 0
-        extra_rows = result.get("extra_rows", 0) or 0
-        diff_pct = result.get("different_rows_pct", 0.0) or 0.0
+        missing = len(result.get("only_in_file1", []))
+        extra = len(result.get("only_in_file2", []))
+        total = max(result.get("total_rows_file1", 1), 1)
+        diff_rows = result.get("rows_with_differences", 0)
+        diff_pct = (diff_rows / total) * 100
 
-        if thr.max_missing_rows is not None and missing_rows > thr.max_missing_rows:
+        if thr.max_missing_rows is not None and missing > thr.max_missing_rows:
             failures.append(
-                f"missing_rows {missing_rows} exceeds max_missing_rows {thr.max_missing_rows}"
+                f"missing_rows={missing} exceeds max={thr.max_missing_rows}"
             )
-        if thr.max_extra_rows is not None and extra_rows > thr.max_extra_rows:
+        if thr.max_extra_rows is not None and extra > thr.max_extra_rows:
             failures.append(
-                f"extra_rows {extra_rows} exceeds max_extra_rows {thr.max_extra_rows}"
+                f"extra_rows={extra} exceeds max={thr.max_extra_rows}"
             )
         if thr.max_different_rows_pct is not None and diff_pct > thr.max_different_rows_pct:
             failures.append(
-                f"different_rows_pct {diff_pct:.2f}% exceeds max_different_rows_pct {thr.max_different_rows_pct}%"
+                f"different_rows_pct={diff_pct:.2f}% exceeds max={thr.max_different_rows_pct}%"
             )
 
     if failures:
@@ -77,6 +139,7 @@ def _run_single_test(
     test: TestConfig,
     resolved_file: str,
     output_dir: str,
+    run_id: str = "",
 ) -> dict[str, Any]:
     """Run one test and return its result dict."""
     start = time.monotonic()
@@ -107,28 +170,30 @@ def _run_single_test(
             warning_count = svc_result.get("warning_count", 0) or 0
 
         elif test.type == "oracle_vs_file":
-            from src.services.compare_service import run_compare_service
-
-            keys_str = ",".join(test.key_columns) if test.key_columns else None
-            svc_result = run_compare_service(
-                file1=resolved_file,
-                file2=test.oracle_query or "",
-                keys=keys_str,
-                mapping=test.mapping,
-            )
-            total_rows = svc_result.get("total_rows", 0) or 0
-            error_count = svc_result.get("different_count", 0) or 0
+            svc_result = _run_oracle_vs_file_test(test, resolved_file, output_dir, run_id)
+            # If oracle extraction/config returned an ERROR or SKIPPED dict, propagate immediately
+            if svc_result.get("status") in ("ERROR", "SKIPPED"):
+                return {
+                    "name": test.name,
+                    "type": test.type,
+                    "status": svc_result["status"],
+                    "total_rows": svc_result.get("total_rows", 0),
+                    "error_count": svc_result.get("error_count", 0),
+                    "warning_count": svc_result.get("warning_count", 0),
+                    "duration_seconds": round(time.monotonic() - start, 1),
+                    "report_path": report_path,
+                    "detail": svc_result.get("detail", ""),
+                }
+            total_rows = svc_result.get("total_rows_file1", 0) or 0
+            error_count = svc_result.get("rows_with_differences", 0) or 0
             warning_count = 0
         else:
             raise ValueError(f"Unknown test type: {test.type!r}")
 
-        status, detail = _check_thresholds(test, {
-            "error_count": error_count,
-            "warning_count": warning_count,
-            "missing_rows": svc_result.get("missing_rows", 0) if test.type == "oracle_vs_file" else 0,
-            "extra_rows": svc_result.get("extra_rows", 0) if test.type == "oracle_vs_file" else 0,
-            "different_rows_pct": svc_result.get("different_rows_pct", 0.0) if test.type == "oracle_vs_file" else 0.0,
-        })
+        threshold_input = {"error_count": error_count, "warning_count": warning_count}
+        if test.type == "oracle_vs_file":
+            threshold_input.update(svc_result)
+        status, detail = _check_thresholds(test, threshold_input)
 
     except Exception as exc:
         status = "ERROR"
@@ -187,7 +252,7 @@ def run_tests_command(
     results: list[dict[str, Any]] = []
     for test in suite.tests:
         resolved_file = resolve_params(test.file, params)
-        result = _run_single_test(test, resolved_file, output_dir)
+        result = _run_single_test(test, resolved_file, output_dir, run_id=run_id)
         results.append(result)
 
     return results
