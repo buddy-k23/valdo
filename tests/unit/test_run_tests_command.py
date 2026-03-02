@@ -527,7 +527,8 @@ class TestArchiveIntegration:
 
         import src.utils.archive as archive_mod
         monkeypatch.setattr(
-            archive_mod.ArchiveManager, "archive_run",
+            archive_mod.ArchiveManager,
+            "archive_run",
             lambda self_inner, **kwargs: archive_dir,
         )
 

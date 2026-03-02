@@ -390,6 +390,7 @@ def _append_run_history(
     suite_report_path: str,
     env: str,
     archive_path: str = "",
+    timestamp: str = "",
 ) -> None:
     """Append a run summary entry to ``reports/run_history.json``.
 
@@ -413,6 +414,10 @@ def _append_run_history(
         archive_path: Absolute path to the archive directory created by
             ``ArchiveManager.archive_run``.  Empty string when archiving was
             skipped or not yet implemented.
+        timestamp: ISO-8601 UTC timestamp string for this run entry.  When
+            provided, it is shared with the archive manifest so both records
+            carry the same timestamp.  Falls back to ``datetime.utcnow()`` if
+            not supplied.
     """
     history_path = Path(output_dir) / ".." / "reports" / "run_history.json"
     history_path = history_path.resolve()
@@ -441,7 +446,7 @@ def _append_run_history(
         "run_id": run_id,
         "suite_name": suite.name,
         "environment": env,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": timestamp or (datetime.utcnow().isoformat() + "Z"),
         "status": overall_status,
         "report_url": f"/uploads/{Path(suite_report_path).name}",
         "pass_count":  sum(1 for r in results if r["status"] == "PASS"),
@@ -516,20 +521,26 @@ def run_suite_from_path(
         environment=env or suite.environment,
     )
 
+    # Local import to avoid loading ArchiveManager at module level during CLI startup.
     from src.utils.archive import ArchiveManager
 
-    archive = ArchiveManager()
     run_timestamp = datetime.utcnow().isoformat() + "Z"
-    report_files = [suite_report_path] + [
-        r["report_path"] for r in results if r.get("report_path")
-    ]
-    archive_run_dir = archive.archive_run(
-        run_id=run_id,
-        suite_name=suite.name,
-        env=env or suite.environment,
-        timestamp=run_timestamp,
-        files=report_files,
-    )
+    archive_path_str = ""
+    try:
+        archive = ArchiveManager()
+        report_files = [suite_report_path] + [
+            r["report_path"] for r in results if r.get("report_path")
+        ]
+        archive_run_dir = archive.archive_run(
+            run_id=run_id,
+            suite_name=suite.name,
+            env=env or suite.environment,
+            timestamp=run_timestamp,
+            files=report_files,
+        )
+        archive_path_str = str(archive_run_dir)
+    except Exception as exc:  # pragma: no cover
+        click.echo(f"[archive] warning: could not archive run {run_id}: {exc}", err=True)
 
     _append_run_history(
         output_dir=output_dir,
@@ -538,7 +549,8 @@ def run_suite_from_path(
         results=results,
         suite_report_path=suite_report_path,
         env=env or suite.environment,
-        archive_path=str(archive_run_dir),
+        archive_path=archive_path_str,
+        timestamp=run_timestamp,
     )
 
     return results
