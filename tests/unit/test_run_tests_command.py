@@ -659,3 +659,50 @@ class TestRunHistoryDbWrite:
         assert found, "run_history.json must be written even after DB failure"
         history = json.loads(Path(found[0]).read_text(encoding="utf-8"))
         assert len(history) == 1
+
+    def test_corrupt_history_json_is_replaced(self, tmp_path, monkeypatch):
+        """A corrupt run_history.json is overwritten with a fresh entry."""
+        import json
+        from src.commands.run_tests_command import _append_run_history
+        from src.contracts.test_suite import TestSuiteConfig
+
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+        output_dir = reports_dir  # _append_run_history resolves: output_dir/../reports/
+        # Place corrupted JSON one level below so the resolved path picks it up
+        (output_dir.parent / "reports" / "run_history.json").write_text(
+            "<<<not json>>>", encoding="utf-8"
+        )
+
+        suite = TestSuiteConfig(name="Corrupt Test", environment="dev", tests=[])
+        _append_run_history(
+            output_dir=str(output_dir),
+            run_id="corrupt-run-001",
+            suite=suite,
+            results=[],
+            suite_report_path=str(output_dir / "report.html"),
+            env="dev",
+        )
+
+        history_file = output_dir.parent / "reports" / "run_history.json"
+        assert history_file.exists()
+        history = json.loads(history_file.read_text(encoding="utf-8"))
+        assert len(history) == 1
+        assert history[0]["run_id"] == "corrupt-run-001"
+
+
+# ---------------------------------------------------------------------------
+# _compute_overall_status — edge case coverage
+# ---------------------------------------------------------------------------
+
+class TestComputeOverallStatus:
+    def test_partial_with_mixed_and_unknown_status(self):
+        """else-branch (line 402): FAIL + PASS + unrecognised status → PARTIAL."""
+        from src.commands.run_tests_command import _compute_overall_status
+
+        results = [
+            {"status": "FAIL"},
+            {"status": "PASS"},
+            {"status": "UNKNOWN"},
+        ]
+        assert _compute_overall_status(results) == "PARTIAL"
