@@ -705,7 +705,7 @@ function buildRunsTable(rows) {
   // thead
   var thead = document.createElement('thead');
   var headerRow = document.createElement('tr');
-  ['Suite Name', 'Environment', 'Date', 'Status', 'Tests', 'Report'].forEach(function(h) {
+  ['Run ID', 'Suite Name', 'Environment', 'Date', 'Status', 'Tests', 'Report'].forEach(function(h) {
     var th = document.createElement('th');
     th.textContent = h;
     headerRow.appendChild(th);
@@ -717,6 +717,14 @@ function buildRunsTable(rows) {
   var tbody = document.createElement('tbody');
   rows.forEach(function(r) {
     var tr = document.createElement('tr');
+
+    // Run ID
+    var tdId = document.createElement('td');
+    tdId.textContent = r.run_id ? r.run_id.substring(0, 8) + '…' : '—';
+    tdId.style.fontFamily = 'monospace';
+    tdId.style.fontSize = '11px';
+    tdId.setAttribute('data-tooltip', 'Unique identifier for this suite run');
+    tr.appendChild(tdId);
 
     // Suite name
     var tdName = document.createElement('td');
@@ -731,6 +739,7 @@ function buildRunsTable(rows) {
     // Date
     var tdDate = document.createElement('td');
     tdDate.textContent = r.timestamp ? new Date(r.timestamp).toLocaleString() : '—';
+    tdDate.setAttribute('data-tooltip', 'UTC time when the suite run completed');
     tr.appendChild(tdDate);
 
     // Status badge
@@ -755,7 +764,7 @@ function buildRunsTable(rows) {
     tdTests.textContent = (r.pass_count || 0) + '/' + (r.total_count || 0) + ' passed';
     tr.appendChild(tdTests);
 
-    // Report link
+    // Report link + archive icon
     var tdReport = document.createElement('td');
     if (r.report_url) {
       var a = document.createElement('a');
@@ -767,6 +776,12 @@ function buildRunsTable(rows) {
       tdReport.appendChild(a);
     } else {
       tdReport.textContent = '—';
+    }
+    if (r.archive_path) {
+      var archiveIcon = document.createElement('span');
+      archiveIcon.textContent = ' 🔒';
+      archiveIcon.setAttribute('data-tooltip', 'This run is permanently archived with a tamper-evident SHA-256 manifest');
+      tdReport.appendChild(archiveIcon);
     }
     tr.appendChild(tdReport);
 
@@ -818,6 +833,7 @@ function setGenResult(barId, type, msg, links) {
       a.href = lnk.href || '#';
       if (lnk.download) { a.setAttribute('download', lnk.download); }
       if (lnk.onClick)  { a.addEventListener('click', lnk.onClick); }
+      if (lnk.tooltip)  { a.setAttribute('data-tooltip', lnk.tooltip); }
       el.appendChild(a);
     });
   }
@@ -879,8 +895,8 @@ document.getElementById('btnGenMapping').addEventListener('click', async functio
     var data = await resp.json();
     var mid  = data.mapping_id;
     setGenResult('mapResultBar', 'success', '\u2705 \u2018' + mid + '\u2019 created\u00a0\u00a0', [
-      { text: 'Download JSON', href: '/api/v1/mappings/' + encodeURIComponent(mid), download: mid + '.json' },
-      { text: 'Use in Quick Test \u2192', onClick: function(e) {
+      { text: 'Download JSON', href: '/api/v1/mappings/' + encodeURIComponent(mid), download: mid + '.json', tooltip: 'Download the generated JSON config to your machine' },
+      { text: 'Use in Quick Test \u2192', tooltip: 'Load this config into the Quick Test tab and switch to it', onClick: function(e) {
           e.preventDefault();
           loadMappings();
           switchTab('quick');
@@ -915,7 +931,7 @@ document.getElementById('btnGenRules').addEventListener('click', async function(
     var data = await resp.json();
     var rid  = data.rules_id;
     setGenResult('rulesResultBar', 'success', '\u2705 \u2018' + rid + '\u2019 created\u00a0\u00a0', [
-      { text: 'Download JSON', href: '/api/v1/rules/' + encodeURIComponent(rid) + '.json', download: rid + '.json' }
+      { text: 'Download JSON', href: '/api/v1/rules/' + encodeURIComponent(rid) + '.json', download: rid + '.json', tooltip: 'Download the generated JSON config to your machine' }
     ]);
   } catch (err) {
     setGenResult('rulesResultBar', 'error', 'Error: ' + err.message, null);
