@@ -185,3 +185,54 @@ def test_ui_contains_rules_type_dropdown(client):
     """GET /ui must contain the BA-friendly rules type option."""
     response = client.get("/ui")
     assert b"BA-friendly" in response.content
+
+
+# ---------------------------------------------------------------------------
+# Tooltip tests
+# ---------------------------------------------------------------------------
+
+def _load_ui_html() -> str:
+    """Read ui.html directly (not via HTTP) for structural checks."""
+    ui_path = Path(__file__).resolve().parent.parent.parent / "src" / "reports" / "static" / "ui.html"
+    return ui_path.read_text(encoding="utf-8")
+
+
+class TestTooltips:
+    def test_tooltip_css_rule_present(self):
+        html = _load_ui_html()
+        assert "[data-tooltip]" in html, "CSS tooltip rule missing"
+
+    def test_validate_button_has_tooltip(self):
+        html = _load_ui_html()
+        assert 'id="btnValidate"' in html
+        assert 'data-tooltip=' in html
+
+    def test_compare_button_has_tooltip(self):
+        html = _load_ui_html()
+        assert 'id="btnToggleCompare"' in html
+        assert 'data-tooltip=' in html
+
+    def test_mapping_select_has_tooltip(self):
+        html = _load_ui_html()
+        assert 'id="mappingSelect"' in html
+        assert 'data-tooltip=' in html
+
+    def test_generate_mapping_button_has_tooltip(self):
+        html = _load_ui_html()
+        assert 'id="btnGenMapping"' in html
+        assert 'data-tooltip=' in html
+
+    def test_generate_rules_button_has_tooltip(self):
+        html = _load_ui_html()
+        assert 'id="btnGenRules"' in html
+        assert 'data-tooltip=' in html
+
+    def test_rules_type_select_has_tooltip(self):
+        html = _load_ui_html()
+        assert 'id="rulesTypeSelect"' in html
+        assert 'data-tooltip=' in html
+
+    def test_status_badges_have_tooltip_in_js(self):
+        """The JS that builds the runs table must add data-tooltip to badges."""
+        html = _load_ui_html()
+        assert "data-tooltip" in html
