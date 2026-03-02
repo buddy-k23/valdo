@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import time
@@ -478,7 +479,6 @@ def _append_run_history(
             repo.insert_run(entry)
             repo.insert_tests(run_id, results)
         except Exception as exc:  # noqa: BLE001
-            import logging
             logging.getLogger(__name__).warning(
                 "run_history DB write failed (JSON fallback still written): %s", exc
             )
