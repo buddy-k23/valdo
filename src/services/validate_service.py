@@ -64,6 +64,22 @@ def run_validate_service(
     result.setdefault("warning_count", len(result.get("warnings", [])))
     result.setdefault("total_rows", result.get("row_count", 0))
 
+    # If total_rows is still 0 (validator exited early), count non-empty lines.
+    if not result.get("total_rows"):
+        try:
+            with open(file, encoding="utf-8", errors="replace") as fh:
+                result["total_rows"] = sum(1 for line in fh if line.strip())
+        except Exception:
+            pass
+
+    # Derive valid_rows from the set of unique row numbers that have errors.
+    if not result.get("valid_rows"):
+        affected = {
+            e["row"] for e in result.get("errors", [])
+            if isinstance(e.get("row"), int)
+        }
+        result["valid_rows"] = max(0, result.get("total_rows", 0) - len(affected))
+
     if output:
         from pathlib import Path
 
