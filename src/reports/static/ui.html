@@ -1425,8 +1425,7 @@ async function atSaveRequest() {
     id:         (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
     name:       name,
     method:     document.getElementById('atMethod').value,
-    path:       document.getElementById('atBaseUrl').value.trim().replace(/\/$/, '') +
-                document.getElementById('atPath').value.trim(),
+    path:       document.getElementById('atPath').value.trim(),
     headers:    atGetHeaders(),
     body_type:  _atBodyType,
     body_json:  document.getElementById('atBodyJsonText').value,
