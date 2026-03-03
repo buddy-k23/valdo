@@ -333,7 +333,9 @@ def test_runs() -> None:
         check("  /trigger → status=queued", data.get("status") == "queued",
               f"status={data.get('status')!r}")
 
-    if run_id:
+    if not run_id:
+        check("GET /api/v1/runs/{run_id}", False, "no run_id from trigger")
+    else:
         r = get(f"/api/v1/runs/{run_id}")
         data = expect(f"GET /api/v1/runs/{{run_id}}", r, 200)
         if data:
@@ -407,14 +409,18 @@ def test_api_tester() -> None:
         check("  /suites POST → name correct", data.get("name") == "E2E Test Suite")
 
     # Get the suite
-    if suite_id:
+    if not suite_id:
+        check("GET /api/v1/api-tester/suites/{id}", False, "no suite_id from create")
+    else:
         r = get(f"/api/v1/api-tester/suites/{suite_id}")
         data = expect(f"GET /api/v1/api-tester/suites/{{id}}", r, 200)
         if data:
             check("  /suites GET → id matches", data.get("id") == suite_id)
 
     # Update the suite
-    if suite_id:
+    if not suite_id:
+        check("PUT /api/v1/api-tester/suites/{id}", False, "no suite_id from create")
+    else:
         r = put(f"/api/v1/api-tester/suites/{suite_id}",
                 json={
                     "name": "E2E Test Suite (updated)",
@@ -427,7 +433,9 @@ def test_api_tester() -> None:
                   data.get("name") == "E2E Test Suite (updated)")
 
     # Delete the suite
-    if suite_id:
+    if not suite_id:
+        check("DELETE /api/v1/api-tester/suites/{id}", False, "no suite_id from create")
+    else:
         r = delete(f"/api/v1/api-tester/suites/{suite_id}")
         check(f"DELETE /api/v1/api-tester/suites/{{id}}",
               r.status_code == 204,
