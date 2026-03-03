@@ -14,14 +14,13 @@ import json
 import sys
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.commands.run_tests_command import run_suite_from_path  # noqa: E402
 
-BASE_URL = "http://127.0.0.1:8000"
-RUN_DATE = date.today().isoformat()
 SUITE_PATH = str(PROJECT_ROOT / "config" / "test_suites" / "e2e_full.yaml")
 
 GREEN = "\033[32m"
@@ -31,15 +30,17 @@ RESET = "\033[0m"
 LABEL = "[BATCH]"
 
 
-def run_batch_tests(out_dir: Path) -> dict:
-    """Run e2e_full.yaml suite and return {passed, failed, tests}.
+def run_batch_tests(out_dir: Path) -> dict[str, Any]:
+    """Run e2e_full.yaml suite and return {passed, failed, skipped, tests}.
 
     Args:
         out_dir: Output directory; batch HTML reports go to out_dir/batch-reports/.
 
     Returns:
-        Dict with keys: passed (int), failed (int), tests (list of result dicts).
+        Dict with keys: passed (int), failed (int), skipped (int),
+        tests (list of result dicts).
     """
+    out_dir = Path(out_dir)
     batch_reports_dir = out_dir / "batch-reports"
     batch_reports_dir.mkdir(parents=True, exist_ok=True)
 
@@ -52,19 +53,29 @@ def run_batch_tests(out_dir: Path) -> dict:
 
     passed = 0
     failed = 0
+    skipped = 0
     detail_list = []
 
     for r in results:
         name = r["name"]
         status = r["status"]
-        ok = status in ("PASS", "SKIPPED")
-        color = GREEN if ok else RED
+        if status == "PASS":
+            color = GREEN
+        elif status == "SKIPPED":
+            color = YELLOW
+        else:
+            color = RED
         label_str = f"{LABEL} {name}"
         print(f"{color}{label_str:<55} {status}{RESET}")
+        ok = status == "PASS"
         if ok:
             passed += 1
+        elif status == "SKIPPED":
+            skipped += 1
         else:
             failed += 1
+        if not ok and r.get("detail"):
+            print(f"       {r['detail']}")
         detail_list.append({
             "name": name,
             "status": status,
@@ -74,7 +85,7 @@ def run_batch_tests(out_dir: Path) -> dict:
             "duration_seconds": r.get("duration_seconds", 0),
         })
 
-    result_data = {"passed": passed, "failed": failed, "tests": detail_list}
+    result_data = {"passed": passed, "failed": failed, "skipped": skipped, "tests": detail_list}
     results_path = out_dir / "batch-results.json"
     results_path.write_text(json.dumps(result_data, indent=2), encoding="utf-8")
     return result_data
@@ -82,13 +93,17 @@ def run_batch_tests(out_dir: Path) -> dict:
 
 def main() -> int:
     """Standalone entry point."""
-    out_dir = PROJECT_ROOT / "screenshots" / f"e2e-full-{RUN_DATE}"
+    run_date = date.today().isoformat()
+    out_dir = PROJECT_ROOT / "screenshots" / f"e2e-full-{run_date}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\nCM3 — E2E Batch Tests  ({RUN_DATE})")
+    print(f"\nCM3 — E2E Batch Tests  ({run_date})")
     r = run_batch_tests(out_dir)
 
-    print(f"\n{LABEL} {r['passed']} passed / {r['failed']} failed")
+    summary = f"\n{LABEL} {r['passed']} passed / {r['failed']} failed"
+    if r["skipped"] > 0:
+        summary += f" / {r['skipped']} skipped"
+    print(summary)
     return 0 if r["failed"] == 0 else 1
 
 
