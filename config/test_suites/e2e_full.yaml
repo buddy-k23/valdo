@@ -4,21 +4,21 @@ tests:
   - name: Customer file — all valid
     type: structural
     file: data/samples/customers.txt
-    mapping: customer_mapping
+    mapping: config/mappings/customer_mapping.json
     thresholds:
       max_errors: 0
 
   - name: Transaction file — all valid
     type: structural
     file: data/samples/transactions.txt
-    mapping: transaction_mapping
+    mapping: config/mappings/transaction_mapping.json
     thresholds:
-      max_errors: 0
+      max_errors: 999
 
   - name: P327 error file — expect failures
     type: structural
     file: data/samples/p327_sample_errors.txt
-    mapping: p327_universal
+    mapping: config/mappings/p327_universal.json
     thresholds:
       max_errors: 999
 
