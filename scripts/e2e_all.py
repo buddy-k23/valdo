@@ -57,28 +57,43 @@ def main() -> int:
     print(f"\n{BOLD}CM3 Batch Automations — E2E Full Regression Suite  ({run_date}){RESET}")
     print(f"Output: {out_dir}\n")
 
+    batch: dict = {"passed": 0, "failed": 0}
+    api: dict = {"passed": 0, "failed": 0}
+    ui: dict = {"passed": 0, "failed": 0, "checks": []}
+
     # ── Component 1: Batch ──────────────────────────────────────────────────
     print(f"\n{'─'*60}")
     print("Component 1 / 3 — Batch (CLI suite runner)")
     print('─'*60)
-    from scripts.e2e_batch import run_batch_tests  # noqa: E402
-    batch = run_batch_tests(out_dir)
+    try:
+        from scripts.e2e_batch import run_batch_tests  # noqa: E402
+        batch = run_batch_tests(out_dir)
+    except Exception as exc:
+        print(f"{RED}ERROR: Batch component failed: {exc}{RESET}", file=sys.stderr)
+        batch = {"passed": 0, "failed": 1, "error": str(exc)}
 
     # ── Component 2: API ────────────────────────────────────────────────────
     print(f"\n{'─'*60}")
     print("Component 2 / 3 — API (httpx direct)")
     print('─'*60)
-    from scripts.e2e_api import run_api_tests  # noqa: E402
-    api = run_api_tests(out_dir)
+    try:
+        from scripts.e2e_api import run_api_tests  # noqa: E402
+        api = run_api_tests(out_dir)
+    except Exception as exc:
+        print(f"{RED}ERROR: API component failed: {exc}{RESET}", file=sys.stderr)
+        api = {"passed": 0, "failed": 1, "error": str(exc)}
 
     # ── Component 3: UI ─────────────────────────────────────────────────────
-    ui: dict = {"passed": 0, "failed": 0, "checks": []}
     if not args.no_ui:
         print(f"\n{'─'*60}")
         print("Component 3 / 3 — UI (Playwright)")
         print('─'*60)
-        from scripts.e2e_full_ui import run_ui_tests  # noqa: E402
-        ui = run_ui_tests(out_dir)
+        try:
+            from scripts.e2e_full_ui import run_ui_tests  # noqa: E402
+            ui = run_ui_tests(out_dir)
+        except Exception as exc:
+            print(f"{RED}ERROR: UI component failed: {exc}{RESET}", file=sys.stderr)
+            ui = {"passed": 0, "failed": 1, "error": str(exc)}
     else:
         print("\n[UI] Skipped (--no-ui)")
 

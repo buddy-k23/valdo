@@ -11,6 +11,7 @@ Output:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -41,6 +42,7 @@ def run_batch_tests(out_dir: Path) -> dict[str, Any]:
         tests (list of result dicts).
     """
     out_dir = Path(out_dir)
+    os.chdir(PROJECT_ROOT)  # ensure relative mapping paths in YAML resolve correctly
     batch_reports_dir = out_dir / "batch-reports"
     batch_reports_dir.mkdir(parents=True, exist_ok=True)
 

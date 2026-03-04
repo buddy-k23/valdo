@@ -35,6 +35,7 @@ RESET = "\033[0m"
 LABEL = "[UI]  "
 
 _results: list[dict] = []
+_step_counter: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -54,16 +55,20 @@ def step(tag: str, name: str, page: Page, out_dir: Path, fn) -> bool:
     Returns:
         True if the step passed, False if it raised an exception.
     """
+    global _step_counter
+    _step_counter += 1
+    slug = name.replace(" ", "_")
+    prefix = f"step-{_step_counter:03d}-{tag}-{slug}"
     label = f"{tag} — {name}"
     try:
         fn()
-        page.screenshot(path=str(out_dir / f"step-{tag}-{name.replace(' ', '_')}.png"))
+        page.screenshot(path=str(out_dir / f"{prefix}.png"))
         _results.append({"label": label, "status": "PASS"})
         print(f"{GREEN}{LABEL} {label:<55} PASS{RESET}")
         return True
     except Exception as exc:
         try:
-            page.screenshot(path=str(out_dir / f"step-{tag}-{name.replace(' ', '_')}_FAIL.png"))
+            page.screenshot(path=str(out_dir / f"{prefix}_FAIL.png"))
         except Exception:
             pass
         _results.append({"label": label, "status": "FAIL", "error": str(exc)})
@@ -71,12 +76,11 @@ def step(tag: str, name: str, page: Page, out_dir: Path, fn) -> bool:
         return False
 
 
-def record_workflow(pw, workflow_name: str, video_stem: str, out_dir: Path, fn) -> None:
+def record_workflow(pw, video_stem: str, out_dir: Path, fn) -> None:
     """Launch a fresh browser context with video recording, run fn, save video.
 
     Args:
         pw: Playwright instance from sync_playwright context.
-        workflow_name: Human-readable name printed to terminal.
         video_stem: Filename stem for the .webm output (no extension).
         out_dir: Root output directory; video saved as out_dir/{video_stem}.webm.
         fn: Callable(page, out_dir) that implements the workflow steps.
@@ -203,6 +207,10 @@ def workflow_recent_runs(page: Page, out_dir: Path) -> None:
     tag = "recent-runs"
     print(f"\n── Workflow 2: Recent Runs ──")
 
+    # Capture uncaught page errors before any navigation
+    js_errors: list[str] = []
+    page.on("pageerror", lambda exc: js_errors.append(str(exc)))
+
     step(tag, "navigate", page, out_dir, lambda: (
         page.goto(f"{BASE_URL}/ui"),
         page.wait_for_load_state("networkidle"),
@@ -222,10 +230,9 @@ def workflow_recent_runs(page: Page, out_dir: Path) -> None:
         ]), "Recent Runs panel shows no recognizable content"
     step(tag, "assert runs panel rendered", page, out_dir, assert_runs_rendered)
 
-    # Check no JS errors (best-effort)
+    # Check no JS errors collected by the pageerror listener
     def assert_no_js_errors():
-        errors = page.evaluate("() => window.__jsErrors || []")
-        assert not errors, f"JS errors: {errors}"
+        assert not js_errors, f"JS errors: {js_errors}"
     step(tag, "no JS errors", page, out_dir, assert_no_js_errors)
 
 
@@ -371,16 +378,16 @@ def run_ui_tests(out_dir: Path) -> dict:
     Returns:
         Dict with keys: passed (int), failed (int), checks (list of result dicts).
     """
-    global _results
+    global _results, _step_counter
     _results = []
+    _step_counter = 0
     out_dir = Path(out_dir)
 
     with sync_playwright() as pw:
-        record_workflow(pw, "Quick Test", "ui-quick-test", out_dir, workflow_quick_test)
-        record_workflow(pw, "Recent Runs", "ui-recent-runs", out_dir, workflow_recent_runs)
-        record_workflow(pw, "Mapping Generator", "ui-mapping-generator", out_dir,
-                        workflow_mapping_generator)
-        record_workflow(pw, "API Tester", "ui-api-tester", out_dir, workflow_api_tester)
+        record_workflow(pw, "ui-quick-test", out_dir, workflow_quick_test)
+        record_workflow(pw, "ui-recent-runs", out_dir, workflow_recent_runs)
+        record_workflow(pw, "ui-mapping-generator", out_dir, workflow_mapping_generator)
+        record_workflow(pw, "ui-api-tester", out_dir, workflow_api_tester)
 
     passed = sum(1 for r in _results if r["status"] == "PASS")
     failed = sum(1 for r in _results if r["status"] == "FAIL")
