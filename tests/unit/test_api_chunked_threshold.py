@@ -28,3 +28,10 @@ def test_threshold_constant_is_50mb():
 def test_missing_file_returns_false(tmp_path):
     """Non-existent files should return False (safe default)."""
     assert _should_use_chunked(tmp_path / "ghost.txt") is False
+
+
+def test_file_one_byte_below_threshold_returns_false(tmp_path):
+    """Files strictly below threshold should not trigger chunked processing."""
+    f = tmp_path / "just_under.txt"
+    f.write_bytes(b"x" * (_CHUNK_THRESHOLD_BYTES - 1))
+    assert _should_use_chunked(f) is False

@@ -193,7 +193,32 @@ def _run_compare_with_mapping(
     upload_path2: Path,
     request: FileCompareRequest,
 ) -> FileCompareResult:
-    """Execute a synchronous file comparison and return the result model."""
+    """Execute a synchronous file comparison and return the result model.
+
+    Resolves the mapping file from ``request.mapping_id``, delegates to
+    :func:`run_compare_service`, generates an HTML report via
+    :class:`HTMLReporter`, and wraps the raw service output into a
+    :class:`FileCompareResult` response model.
+
+    Chunked processing is enabled automatically when ``request.key_columns``
+    is non-empty **and** at least one of the two files meets the
+    ``_CHUNK_THRESHOLD_BYTES`` size threshold.
+
+    Args:
+        upload_path1: Filesystem path to the first uploaded file.
+        upload_path2: Filesystem path to the second uploaded file.
+        request: Parsed compare request containing ``mapping_id``,
+            optional ``key_columns``, and the ``detailed`` flag.
+
+    Returns:
+        A :class:`FileCompareResult` containing row counts, match/difference
+        counts, an optional ``field_statistics`` mapping, and a
+        ``report_url`` pointing to the generated HTML report.
+
+    Raises:
+        HTTPException: 404 if the mapping file for ``request.mapping_id``
+            does not exist.
+    """
     mapping_file = MAPPINGS_DIR / f"{request.mapping_id}.json"
     if not mapping_file.exists():
         raise HTTPException(status_code=404, detail=f"Mapping '{request.mapping_id}' not found")
