@@ -10,20 +10,25 @@ from ..utils.logger import get_logger
 class ChunkedFileParser:
     """Parse large files in chunks to minimize memory usage."""
     
-    def __init__(self, file_path: str, delimiter: str = '|', 
-                 chunk_size: int = 100000, encoding: str = 'utf-8'):
+    def __init__(self, file_path: str, delimiter: str = '|',
+                 chunk_size: int = 100000, encoding: str = 'utf-8',
+                 has_header: bool = True):
         """Initialize chunked parser.
-        
+
         Args:
             file_path: Path to file to parse
             delimiter: Field delimiter
             chunk_size: Number of rows per chunk
             encoding: File encoding
+            has_header: Whether the file contains a header row. When False,
+                pandas reads all rows as data and column names are auto-assigned
+                (0, 1, …) unless columns are supplied to parse_chunks.
         """
         self.file_path = file_path
         self.delimiter = delimiter
         self.chunk_size = chunk_size
         self.encoding = encoding
+        self.has_header = has_header
         self.logger = get_logger(__name__)
         
     def parse_chunks(self, columns: Optional[List[str]] = None) -> Iterator[pd.DataFrame]:
@@ -36,10 +41,15 @@ class ChunkedFileParser:
             DataFrame chunks
         """
         try:
+            # When the file has no header row, use header=None so pandas treats
+            # all lines as data.  header=0 is the pandas default (row 0 as
+            # column names); header=None means "no header, auto-number columns".
+            header: Optional[int] = 0 if self.has_header else None
             for chunk in pd.read_csv(
                 self.file_path,
                 sep=self.delimiter,
                 names=columns,
+                header=header,
                 dtype=str,
                 keep_default_na=False,
                 chunksize=self.chunk_size,

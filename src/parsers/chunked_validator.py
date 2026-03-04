@@ -134,18 +134,29 @@ class ChunkedFileValidator:
                  strict_fixed_width: bool = False,
                  strict_level: str = 'format',
                  strict_fields: Optional[List[Dict[str, Any]]] = None,
-                 workers: int = 1):
+                 workers: int = 1,
+                 has_header: bool = True):
         """Initialize chunked validator.
-        
+
         Args:
             file_path: Path to file to validate
             delimiter: Field delimiter
             chunk_size: Rows per chunk
             parser: Optional preconfigured chunked parser (e.g., fixed-width parser)
+            rules_config_path: Optional path to business rules JSON config.
+            expected_row_length: Expected number of fields per row for length checks.
+            strict_fixed_width: Enable strict field-level validation.
+            strict_level: Strictness level ('format' or 'all').
+            strict_fields: Field definitions for strict validation.
+            workers: Number of parallel worker processes (1 = sequential).
+            has_header: Whether the data file contains a header row. Forwarded
+                to the internal ChunkedFileParser when no external parser is
+                supplied.
         """
         self.file_path = file_path
         self.delimiter = delimiter
         self.chunk_size = chunk_size
+        self.has_header = has_header
         self.parser = parser
         self.logger = get_logger(__name__)
         self.memory_monitor = MemoryMonitor()
@@ -183,7 +194,10 @@ class ChunkedFileValidator:
         info = []
         
         # Validate structure first
-        parser = self.parser or ChunkedFileParser(self.file_path, self.delimiter, self.chunk_size)
+        parser = self.parser or ChunkedFileParser(
+            self.file_path, self.delimiter, self.chunk_size,
+            has_header=self.has_header,
+        )
         structure_result = parser.validate_structure()
         
         if not structure_result['valid']:
@@ -607,7 +621,10 @@ class ChunkedFileValidator:
         warnings = list(basic_result.get('warnings', []))
         
         # Get actual columns from first chunk
-        parser = self.parser or ChunkedFileParser(self.file_path, self.delimiter, self.chunk_size)
+        parser = self.parser or ChunkedFileParser(
+            self.file_path, self.delimiter, self.chunk_size,
+            has_header=self.has_header,
+        )
         first_chunk = parser.parse_sample(n_rows=10)
         actual_columns = set(first_chunk.columns)
         
