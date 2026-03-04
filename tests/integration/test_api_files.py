@@ -92,15 +92,15 @@ def test_parse_no_file_returns_422():
 
 
 def test_parse_missing_request_body_returns_422():
-    """POST /api/v1/files/parse with file but missing request body returns 422."""
+    """POST /api/v1/files/parse with file but missing mapping_id Form field returns 422."""
     files = {"file": ("test.txt", io.BytesIO(_PIPE_CONTENT), "text/plain")}
-    # Sending only the file without the required 'request' JSON body
+    # Sending only the file without the required 'mapping_id' Form field
     response = client.post("/api/v1/files/parse", files=files)
     assert response.status_code == 422
-    # Validate the error points to the 'request' field
+    # Validate the error points to the 'mapping_id' field
     detail = response.json().get("detail", [])
     locs = [str(err.get("loc", "")) for err in detail]
-    assert any("request" in loc for loc in locs)
+    assert any("mapping_id" in loc for loc in locs)
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +124,7 @@ def test_compare_no_files_returns_422():
 
 
 def test_compare_missing_request_body_returns_422():
-    """POST /api/v1/files/compare with files but no request body returns 422."""
+    """POST /api/v1/files/compare with files but no mapping_id Form field returns 422."""
     files = {
         "file1": ("file1.txt", io.BytesIO(_PIPE_CONTENT), "text/plain"),
         "file2": ("file2.txt", io.BytesIO(_PIPE_CONTENT), "text/plain"),
@@ -133,4 +133,4 @@ def test_compare_missing_request_body_returns_422():
     assert response.status_code == 422
     detail = response.json().get("detail", [])
     locs = [str(err.get("loc", "")) for err in detail]
-    assert any("request" in loc for loc in locs)
+    assert any("mapping_id" in loc for loc in locs)
