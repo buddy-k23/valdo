@@ -54,6 +54,8 @@ def test_non_chunked_and_chunked_agree_on_validity(tmp_path):
     r_standard = run_validate_service(file=data_file, mapping=mapping_file)
     r_chunked  = run_validate_service(file=data_file, mapping=mapping_file, use_chunked=True)
     assert r_standard["valid"] == r_chunked["valid"]
+    assert r_standard["total_rows"] == r_chunked["total_rows"]
+    assert r_standard["error_count"] == r_chunked["error_count"]
 
 
 def test_fixed_width_mapping_ignores_use_chunked(tmp_path):
@@ -73,6 +75,24 @@ def test_fixed_width_mapping_ignores_use_chunked(tmp_path):
     mapping_file = tmp_path / "fw_mapping.json"
     mapping_file.write_text(json.dumps(fw_mapping), encoding="utf-8")
 
-    result = run_validate_service(file=str(data_file), mapping=str(mapping_file),
-                                  use_chunked=True)
-    assert "total_rows" in result
+    r_chunked  = run_validate_service(file=str(data_file), mapping=str(mapping_file),
+                                      use_chunked=True)
+    r_standard = run_validate_service(file=str(data_file), mapping=str(mapping_file),
+                                      use_chunked=False)
+    # Both paths should produce the same row count and error count,
+    # confirming the fallback routes to the standard EnhancedFileValidator.
+    assert r_chunked["total_rows"] == r_standard["total_rows"]
+    assert r_chunked["error_count"] == r_standard["error_count"]
+
+
+def test_chunked_validate_detects_errors_in_bad_data(tmp_path):
+    """Errors in data are surfaced through the chunked path."""
+    bad_content = "Alice|thirty\nBob|25\n"  # "thirty" is not an integer
+    data_file = tmp_path / "bad.txt"
+    data_file.write_text(bad_content, encoding="utf-8")
+    mapping_file = tmp_path / "mapping.json"
+    mapping_file.write_text(json.dumps(MAPPING_PIPE), encoding="utf-8")
+
+    result = run_validate_service(file=str(data_file), mapping=str(mapping_file), use_chunked=True)
+    assert result["error_count"] > 0, "Expected errors for non-integer age value"
+    assert result["valid"] is False

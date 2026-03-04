@@ -12,6 +12,24 @@ from ..utils.logger import get_logger
 from ..validators.rule_engine import RuleEngine
 
 
+def _is_integer(value: str) -> bool:
+    """Return True if *value* represents a valid integer."""
+    try:
+        int(value)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
+def _is_float(value: str) -> bool:
+    """Return True if *value* represents a valid float/decimal number."""
+    try:
+        float(value)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
 def _is_value_valid_for_format(value: str, fmt: str) -> bool:
     import re
 
@@ -290,7 +308,15 @@ class ChunkedFileValidator:
                             for col, count in chunk_stats.get('empty_strings', {}).items():
                                 total_empty_strings[col] = total_empty_strings.get(col, 0) + count
             else:
-                for chunk_num, chunk in enumerate(parser.parse_chunks(), 1):
+                # When the file has no header row, supply field names from the
+                # mapping so that named-field lookups in _validate_chunk work.
+                col_names: Optional[List[str]] = None
+                if not self.has_header and self.strict_fields:
+                    col_names = [
+                        f['name'] for f in self.strict_fields
+                        if isinstance(f, dict) and f.get('name')
+                    ] or None
+                for chunk_num, chunk in enumerate(parser.parse_chunks(columns=col_names), 1):
                     # Validate chunk
                     chunk_errors, chunk_warnings, chunk_stats = self._validate_chunk(
                         chunk, chunk_num, seen_rows, max_seen_rows
@@ -550,6 +576,42 @@ class ChunkedFileValidator:
                 empty_count = int(empty_mask.sum())
                 if empty_count > 0:
                     stats['empty_strings'][col] = empty_count
+
+        # Data-type checks: run whenever mapping fields carry data_type declarations.
+        if self.strict_fields:
+            row_base = (chunk_num - 1) * self.chunk_size
+            for local_idx, row in chunk.reset_index(drop=True).iterrows():
+                row_num = row_base + local_idx + 1
+                for field in self.strict_fields:
+                    name = field.get('name')
+                    dtype = str(field.get('data_type') or '').lower()
+                    if not dtype or dtype == 'string' or name not in chunk.columns:
+                        continue
+                    value = '' if pd.isna(row.get(name)) else str(row.get(name)).strip()
+                    if not value:
+                        continue
+                    if dtype in {'integer', 'int'} and not _is_integer(value):
+                        errors.append({
+                            'severity': 'error',
+                            'category': 'data_type',
+                            'code': 'DT_INT_001',
+                            'message': (
+                                f"Field '{name}' expects integer but got '{value}'"
+                            ),
+                            'row': row_num,
+                            'field': name,
+                        })
+                    elif dtype in {'float', 'decimal', 'number'} and not _is_float(value):
+                        errors.append({
+                            'severity': 'error',
+                            'category': 'data_type',
+                            'code': 'DT_FLT_001',
+                            'message': (
+                                f"Field '{name}' expects float but got '{value}'"
+                            ),
+                            'row': row_num,
+                            'field': name,
+                        })
 
         # Strict field-level checks for fixed-width mappings (chunked mode)
         if self.strict_fixed_width and self.strict_fields and self.strict_level in {'format', 'all'}:

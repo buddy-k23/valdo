@@ -163,11 +163,16 @@ def _detect_delimiter(mapping_config: Optional[dict]) -> str:
         mapping_config: Parsed mapping JSON dict, or None.
 
     Returns:
-        Single-character delimiter string. Defaults to '|'.
+        Single-character delimiter string. Checks source.delimiter first,
+        then infers from source.format. Defaults to '|'.
     """
     if not mapping_config:
         return "|"
-    fmt = mapping_config.get("source", {}).get("format", "").lower()
+    source = mapping_config.get("source", {})
+    explicit = source.get("delimiter")
+    if explicit:
+        return explicit
+    fmt = source.get("format", "").lower()
     if "comma" in fmt or "csv" in fmt:
         return ","
     if "tab" in fmt or "tsv" in fmt:
@@ -195,6 +200,10 @@ def _run_chunked_validate(
 
     Returns:
         Raw result dict from ChunkedFileValidator (normalised by caller).
+
+    Raises:
+        ImportError: If ChunkedFileValidator cannot be imported.
+        Exception: Any exception raised by ChunkedFileValidator.validate().
     """
     from src.parsers.chunked_validator import ChunkedFileValidator
 
