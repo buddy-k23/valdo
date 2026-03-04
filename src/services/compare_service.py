@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, List
+from typing import Any
 
 import pandas as pd
 
@@ -31,7 +31,7 @@ def _check_structure_compatibility(
     df1: pd.DataFrame,
     df2: pd.DataFrame,
     mapping_config: dict[str, Any] | None = None,
-) -> List[dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Check that two DataFrames are structurally compatible for comparison.
 
     Checks are performed in order and short-circuit on the first blocking issue:
@@ -62,7 +62,7 @@ def _check_structure_compatibility(
     if len(cols1) != len(cols2):
         return [{"type": "column_count_mismatch", "file1_count": len(cols1), "file2_count": len(cols2)}]
 
-    errors: List[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
 
     # 2. Missing column names.
     set1, set2 = set(cols1), set(cols2)
@@ -105,7 +105,35 @@ def run_compare_service(
     progress: bool = False,
     use_chunked: bool = False,
 ) -> dict[str, Any]:
-    """Shared compare workflow used by CLI and API."""
+    """Run the two-phase file comparison workflow (CLI and API entry point).
+
+    Phase 1 checks structural compatibility via
+    ``_check_structure_compatibility``. If the files are not compatible,
+    returns early with ``structure_compatible: False`` and a
+    ``structure_errors`` list. Phase 2 delegates to
+    ``FileComparator`` (standard) or ``ChunkedFileComparator`` (chunked).
+
+    Args:
+        file1: Path to the first file.
+        file2: Path to the second file.
+        keys: Comma-separated key column names for row matching.
+        mapping: Optional path to a JSON mapping config file.
+        detailed: When True, include field-level diff analysis.
+        chunk_size: Row chunk size for chunked processing.
+        progress: Show progress output during chunked processing.
+        use_chunked: Use ChunkedFileComparator instead of the
+            in-memory comparator.
+
+    Returns:
+        Dict containing at minimum ``structure_compatible``,
+        ``total_rows_file1``, ``total_rows_file2``, ``matching_rows``,
+        ``only_in_file1``, ``only_in_file2``, and ``differences``.
+        When ``structure_compatible`` is False all numeric fields are 0.
+
+    Raises:
+        ValueError: If use_chunked=True and no keys are supplied.
+        ValueError: If a fixed-width file is supplied without a mapping.
+    """
     key_columns = [k.strip() for k in keys.split(',')] if keys else None
 
     if use_chunked:
@@ -160,13 +188,10 @@ def run_compare_service(
             "only_in_file1": 0,
             "only_in_file2": 0,
             "differences": 0,
-            "valid": False,
         }
 
     if key_columns and any(k not in df1.columns for k in key_columns):
         try:
-            import pandas as pd
-
             # Header-derived fallback for delimited files.
             df1h = pd.read_csv(file1, sep='|', dtype=str, keep_default_na=False, header=0)
             df2h = pd.read_csv(file2, sep='|', dtype=str, keep_default_na=False, header=0)

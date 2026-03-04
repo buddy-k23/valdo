@@ -35,8 +35,11 @@ def test_missing_columns_in_file2():
     errors = _check_structure_compatibility(_df(["a", "b", "c"]), _df(["a", "b", "x"]))
     types = {e["type"] for e in errors}
     assert "missing_columns" in types
-    err = next(e for e in errors if e.get("in_file") == "file2")
-    assert "c" in err["columns"]
+    assert len(errors) == 2  # both directions reported
+    err2 = next(e for e in errors if e.get("in_file") == "file2")
+    assert "c" in err2["columns"]
+    err1 = next(e for e in errors if e.get("in_file") == "file1")
+    assert "x" in err1["columns"]
 
 
 def test_missing_columns_in_file1():
@@ -44,15 +47,23 @@ def test_missing_columns_in_file1():
     errors = _check_structure_compatibility(_df(["a", "b", "x"]), _df(["a", "b", "c"]))
     types = {e["type"] for e in errors}
     assert "missing_columns" in types
-    err = next(e for e in errors if e.get("in_file") == "file1")
-    assert "c" in err["columns"]
+    assert len(errors) == 2
+    err1 = next(e for e in errors if e.get("in_file") == "file1")
+    assert "c" in err1["columns"]
+    err2 = next(e for e in errors if e.get("in_file") == "file2")
+    assert "x" in err2["columns"]
 
 
 def test_column_order_mismatch_with_mapping():
-    """Same names but wrong order vs mapping — column_order_mismatch error."""
+    """Same names but wrong order vs mapping — column_order_mismatch error with payload."""
     mapping = {"fields": [{"name": "a"}, {"name": "b"}, {"name": "c"}]}
     errors = _check_structure_compatibility(_df(["b", "a", "c"]), _df(["b", "a", "c"]), mapping)
-    assert any(e["type"] == "column_order_mismatch" for e in errors)
+    assert len(errors) == 1
+    err = errors[0]
+    assert err["type"] == "column_order_mismatch"
+    assert err["expected_columns"] == ["a", "b", "c"]
+    assert err["file1_columns"] == ["b", "a", "c"]
+    assert err["file2_columns"] == ["b", "a", "c"]
 
 
 def test_no_order_check_without_mapping():
@@ -74,7 +85,6 @@ def test_run_compare_service_structure_error_on_count_mismatch(tmp_path):
     f2.write_text("a|b\n1|2\n", encoding="utf-8")
     result = run_compare_service(str(f1), str(f2))
     assert result["structure_compatible"] is False
-    assert result["valid"] is False
     assert result["differences"] == 0
     assert any(e["type"] == "column_count_mismatch" for e in result["structure_errors"])
 
