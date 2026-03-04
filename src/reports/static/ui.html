@@ -209,6 +209,24 @@
   a.report-link { color: #4a9eff; text-decoration: none; font-size: 12px; }
   a.report-link:hover { text-decoration: underline; }
 
+  #reportPanel { display: none; margin-top: 14px; }
+  #reportPanel.visible { display: block; }
+  .report-panel-bar {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px; color: var(--muted);
+  }
+  .report-panel-bar span { flex: 1; }
+  #btnCloseReport {
+    background: none; border: none; color: var(--muted);
+    font-size: 16px; cursor: pointer; padding: 0 4px; line-height: 1;
+  }
+  #btnCloseReport:hover { color: var(--text); }
+  #reportFrame {
+    width: 100%; height: 520px; margin-top: 8px;
+    border: 1px solid #2a2a3a; border-radius: 4px;
+    background: #fff;
+  }
+
   .empty-msg { color: var(--muted); padding: 24px 12px; text-align: center; font-size: 13px; }
 
   /* mapping generator */
@@ -464,6 +482,16 @@
     </div>
 
     <div class="status-msg info" id="statusMsg">Select a file and mapping to get started.</div>
+
+    <div id="reportPanel">
+      <div class="report-panel-bar">
+        <span>Inline Report</span>
+        <a id="reportOpenLink" href="#" target="_blank" rel="noopener noreferrer"
+           class="report-link">Open in new tab ↗</a>
+        <button id="btnCloseReport" aria-label="Close report">×</button>
+      </div>
+      <iframe id="reportFrame" src="" title="Validation / Comparison Report"></iframe>
+    </div>
   </div>
 
   <!-- RECENT RUNS PANEL -->
@@ -700,7 +728,19 @@ function setStatusWithLink(msg, type, linkText, linkHref) {
   }
 }
 
+function showInlineReport(url) {
+  document.getElementById('reportFrame').src = url;
+  document.getElementById('reportOpenLink').href = url;
+  document.getElementById('reportPanel').classList.add('visible');
+}
+
+function hideInlineReport() {
+  document.getElementById('reportPanel').classList.remove('visible');
+  document.getElementById('reportFrame').src = '';
+}
+
 function setLoading(msg) {
+  hideInlineReport();
   var el = document.getElementById('statusMsg');
   el.className = 'status-msg loading';
   while (el.firstChild) { el.removeChild(el.firstChild); }
@@ -739,6 +779,7 @@ function setupDrop(zoneId, slot) {
 }
 setupDrop('dropZone',  'primary');
 setupDrop('dropZone2', 'secondary');
+document.getElementById('btnCloseReport').addEventListener('click', hideInlineReport);
 
 document.getElementById('fileInput').addEventListener('change', function() {
   if (this.files.length) { setFile(this.files[0], 'primary'); }
@@ -841,6 +882,7 @@ document.getElementById('btnValidate').addEventListener('click', async function(
       + (data.invalid_rows ? ' (' + data.invalid_rows + ' errors)' : '') + '.';
     if (data.report_url) {
       setStatusWithLink(msg, data.valid ? 'success' : 'error', 'Open report', data.report_url);
+      showInlineReport(data.report_url);
     } else {
       setStatusText(msg, data.valid ? 'success' : 'error');
     }
@@ -883,6 +925,7 @@ document.getElementById('btnCompare').addEventListener('click', async function()
               ' rows match (' + matchPct + '%).';
     if (data.report_url) {
       setStatusWithLink(msg, 'success', 'Open report', data.report_url);
+      showInlineReport(data.report_url);
     } else {
       setStatusText(msg, 'success');
     }

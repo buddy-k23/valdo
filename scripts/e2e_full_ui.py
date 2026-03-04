@@ -151,6 +151,15 @@ def workflow_quick_test(page: Page, out_dir: Path) -> None:
             "No valid result visible after customers.txt validate"
     step(tag, "assert valid result (customers)", page, out_dir, assert_valid_result)
 
+    def assert_inline_report_visible():
+        panel = page.locator("#reportPanel")
+        pw_expect(panel).to_be_visible(timeout=5000)
+        frame_src = page.locator("#reportFrame").get_attribute("src") or ""
+        assert frame_src.startswith("/uploads/"), \
+            f"Expected iframe src to start with /uploads/, got {frame_src!r}"
+    step(tag, "assert inline report visible (customers)", page, out_dir,
+         assert_inline_report_visible)
+
     # Validate p327_sample_errors.txt
     step(tag, "upload p327_sample_errors.txt", page, out_dir, lambda: (
         page.locator("#fileInput").set_input_files(str(P327_FILE)),
