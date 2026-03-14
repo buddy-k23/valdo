@@ -303,6 +303,7 @@ cm3-batch validate \
 - `--strict-fixed-width`: Enable strict fixed-width field checks
 - `--strict-level [basic|format|all]`: Strict validation depth
 - `--workers <n>`: Parallel worker processes for chunked validation (default: 1)
+- `--suppress-pii/--no-suppress-pii`: Redact raw field values in HTML/CSV reports (default: suppress)
 
 #### Strict field-level validation (fixed-width)
 

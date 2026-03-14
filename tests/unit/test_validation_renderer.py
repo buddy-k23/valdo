@@ -128,6 +128,22 @@ def test_validation_renderer_renders_chunked_telemetry_rows(tmp_path):
     assert "Rows / Second" in html
 
 
+def test_validation_renderer_suppresses_pii_in_html_and_csv_by_default(tmp_path):
+    out = tmp_path / "report_pii.html"
+    payload = _sample_result()
+    payload["errors"] = [{"severity": "error", "message": "value 123456789 failed regex for field SSN"}]
+
+    reporter = ValidationReporter()
+    reporter.generate(payload, str(out))
+
+    html = out.read_text(encoding="utf-8")
+    assert "123456789" not in html
+    assert "[REDACTED]" in html
+
+    err_csv = (tmp_path / "report_pii_errors.csv").read_text(encoding="utf-8")
+    assert "123456789" not in err_csv
+
+
 def test_validation_renderer_required_field_error_summary(tmp_path):
     out = tmp_path / "report_required.html"
     payload = _sample_result()

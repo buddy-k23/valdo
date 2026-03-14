@@ -23,21 +23,22 @@ class ValidationReporter:
     ERROR_DISPLAY_LIMIT = 10
     WARNING_DISPLAY_LIMIT = 100
 
-    def generate(self, validation_results: Dict[str, Any], output_path: str) -> None:
+    def generate(self, validation_results: Dict[str, Any], output_path: str, suppress_pii: bool = True) -> None:
         """Generate HTML validation report.
-        
+
         Args:
-            validation_results: Validation results from EnhancedFileValidator
-            output_path: Path to save HTML report
+            validation_results: Validation results from EnhancedFileValidator.
+            output_path: Path to save HTML report.
+            suppress_pii: Whether to redact raw values in report output.
         """
-        html = self._generate_html(validation_results)
+        html = self._generate_html(validation_results, suppress_pii=suppress_pii)
 
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html)
 
         # Export full issue lists to CSV sidecars to keep HTML report concise.
-        self._write_errors_csv(validation_results, output_path)
-        self._write_warnings_csv(validation_results, output_path)
+        self._write_errors_csv(validation_results, output_path, suppress_pii=suppress_pii)
+        self._write_warnings_csv(validation_results, output_path, suppress_pii=suppress_pii)
 
     def _sort_issues(self, issues):
         """Sort issues by row (numeric), then field, then code/severity."""
@@ -54,7 +55,16 @@ class ValidationReporter:
 
         return sorted(issues, key=_key)
 
-    def _write_errors_csv(self, validation_results: Dict[str, Any], output_path: str) -> None:
+    def _mask_message(self, message: str, suppress_pii: bool) -> str:
+        """Mask sensitive value tokens in validation messages when requested."""
+        if not suppress_pii:
+            return message
+        text = str(message)
+        text = re.sub(r"(?i)(value\s+)([^\s,;]+)", r"\1[REDACTED]", text)
+        text = re.sub(r"'[^']{3,}'", "'[REDACTED]'", text)
+        return text
+
+    def _write_errors_csv(self, validation_results: Dict[str, Any], output_path: str, suppress_pii: bool = True) -> None:
         """Write all errors to a CSV sidecar next to the HTML report.
 
         The sidecar includes a ``source_row`` column so users can trace each
@@ -77,17 +87,17 @@ class ValidationReporter:
                         'source_row': error.get('source_row', error.get('row', '')),
                         'index': idx,
                         'severity': error.get('severity', 'error'),
-                        'message': error.get('message', ''),
+                        'message': self._mask_message(error.get('message', ''), suppress_pii=suppress_pii),
                     })
                 else:
                     writer.writerow({
                         'source_row': '',
                         'index': idx,
                         'severity': 'error',
-                        'message': str(error),
+                        'message': self._mask_message(str(error), suppress_pii=suppress_pii),
                     })
 
-    def _write_warnings_csv(self, validation_results: Dict[str, Any], output_path: str) -> None:
+    def _write_warnings_csv(self, validation_results: Dict[str, Any], output_path: str, suppress_pii: bool = True) -> None:
         """Write all warnings to a CSV sidecar next to the HTML report.
 
         The sidecar includes a ``source_row`` column so users can trace each
@@ -110,17 +120,17 @@ class ValidationReporter:
                         'source_row': warning.get('source_row', warning.get('row', '')),
                         'index': idx,
                         'severity': warning.get('severity', 'warning'),
-                        'message': warning.get('message', ''),
+                        'message': self._mask_message(warning.get('message', ''), suppress_pii=suppress_pii),
                     })
                 else:
                     writer.writerow({
                         'source_row': '',
                         'index': idx,
                         'severity': 'warning',
-                        'message': str(warning),
+                        'message': self._mask_message(str(warning), suppress_pii=suppress_pii),
                     })
 
-    def _generate_html(self, results: Dict[str, Any]) -> str:
+    def _generate_html(self, results: Dict[str, Any], suppress_pii: bool = True) -> str:
         """Generate complete HTML report."""
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -138,7 +148,7 @@ class ValidationReporter:
         {self._generate_header(results)}
         {self._generate_dashboard_bar(results)}
         {self._generate_full_metrics_details(results)}
-        {self._generate_issues(results)}
+        {self._generate_issues(results, suppress_pii=suppress_pii)}
         {self._generate_required_fields(results)}
         {self._wrap_collapsible_section('Field-Level Analysis', self._generate_field_analysis(results))}
         {self._wrap_collapsible_section('Date Field Analysis', self._generate_date_analysis(results))}
@@ -819,7 +829,7 @@ class ValidationReporter:
         </div>
         """
 
-    def _generate_issues(self, results: Dict[str, Any]) -> str:
+    def _generate_issues(self, results: Dict[str, Any], suppress_pii: bool = True) -> str:
         """Generate issues and warnings section with collapsible groups."""
         errors = self._sort_issues(results.get('errors', []))
         warnings = self._sort_issues(results.get('warnings', []))
@@ -838,6 +848,7 @@ class ValidationReporter:
             for item in items:
                 severity = item.get('severity', 'info') if isinstance(item, dict) else 'info'
                 message = item.get('message', '') if isinstance(item, dict) else str(item)
+                message = self._mask_message(message, suppress_pii=suppress_pii)
                 # Surface source_row (physical line number) when available.
                 source_row = None
                 if isinstance(item, dict):
@@ -870,7 +881,9 @@ class ValidationReporter:
                 issue_count = row_info.get('issue_count', 0)
                 issues = row_info.get('issues', [])
 
-                issues_list = ''.join(f'<li>{issue}</li>' for issue in issues[:5])
+                issues_list = ''.join(
+                    f"<li>{self._mask_message(issue, suppress_pii=suppress_pii)}</li>" for issue in issues[:5]
+                )
                 if len(issues) > 5:
                     issues_list += f'<li><em>... and {len(issues) - 5} more issues</em></li>'
 
