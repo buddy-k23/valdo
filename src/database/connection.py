@@ -2,7 +2,7 @@
 
 import oracledb
 from typing import Optional
-import os
+from src.utils.secrets import load_oracle_credentials
 
 # Backward-compatible alias for older tests/code that patch cx_Oracle.
 cx_Oracle = oracledb
@@ -68,14 +68,15 @@ class OracleConnection:
 
     @staticmethod
     def from_env() -> "OracleConnection":
-        """Create connection from environment variables.
-        
+        """Create connection from environment/vault-backed secrets.
+
         Returns:
             OracleConnection instance
         """
+        creds = load_oracle_credentials()
         return OracleConnection(
-            username=os.getenv("ORACLE_USER", ""),
-            password=os.getenv("ORACLE_PASSWORD", ""),
-            dsn=os.getenv("ORACLE_DSN", ""),
+            username=creds["ORACLE_USER"],
+            password=creds["ORACLE_PASSWORD"],
+            dsn=creds["ORACLE_DSN"],
         )
 
