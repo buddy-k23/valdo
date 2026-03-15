@@ -1309,3 +1309,14 @@ python -m src.main submit-task \
 ```
 
 If input is invalid, CLI exits non-zero and prints machine-readable errors when `--machine-errors` is set.
+
+
+## infer-mapping
+
+Generate a draft mapping from a sample file:
+
+```bash
+cm3-batch infer-mapping --file sample.txt --format fixed_width --output config/mappings/sample_draft.json
+```
+
+Use `--format pipe_delimited` for delimited files.

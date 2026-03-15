@@ -216,3 +216,8 @@ Reporting & Utilities
 .. automodule:: src.utils.archive
    :members:
    :undoc-members:
+
+.. automodule:: src.services.mapping_inference_service
+   :members:
+   :undoc-members:
+

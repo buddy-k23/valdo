@@ -891,3 +891,15 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+@cli.command('infer-mapping')
+@click.option('--file', 'file_path', required=True, type=click.Path(exists=True), help='Sample file path')
+@click.option('--format', 'file_format', default='fixed_width', type=click.Choice(['fixed_width', 'pipe_delimited']), show_default=True)
+@click.option('--output', 'output_path', required=True, type=click.Path(), help='Output mapping JSON path')
+def infer_mapping_cli(file_path: str, file_format: str, output_path: str):
+    """Infer a draft mapping from a sample file."""
+    from src.commands.infer_mapping_command import run_infer_mapping_command
+
+    result = run_infer_mapping_command(file=file_path, format=file_format, output=output_path)
+    click.echo(f"✅ Inferred mapping written: {result}")
