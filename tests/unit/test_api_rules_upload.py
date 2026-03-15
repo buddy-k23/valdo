@@ -1,22 +1,28 @@
 """Tests for POST /api/v1/rules/upload endpoint."""
 
 import json
+import os
 from pathlib import Path
+
 from fastapi.testclient import TestClient
+
+os.environ.setdefault("API_KEYS", "test-key:mapping_owner")
+
 from src.api.main import app
 
 client = TestClient(app)
+AUTH_HEADERS = {"X-API-Key": "test-key"}
 
 
 def test_upload_rules_rejects_invalid_extension():
     files = {"file": ("bad.txt", b"x", "text/plain")}
-    r = client.post("/api/v1/rules/upload", files=files)
+    r = client.post("/api/v1/rules/upload", files=files, headers=AUTH_HEADERS)
     assert r.status_code == 400
 
 
 def test_upload_rules_rejects_invalid_rules_type():
     files = {"file": ("rules.csv", b"x", "text/csv")}
-    r = client.post("/api/v1/rules/upload?rules_type=garbage", files=files)
+    r = client.post("/api/v1/rules/upload?rules_type=garbage", files=files, headers=AUTH_HEADERS)
     assert r.status_code == 422
 
 
@@ -34,7 +40,11 @@ def test_upload_rules_ba_friendly_csv_success(monkeypatch, tmp_path):
     monkeypatch.setattr("src.api.routers.rules.RULES_DIR", tmp_path)
 
     files = {"file": ("rules.csv", b"Rule ID,Rule Name\n", "text/csv")}
-    r = client.post("/api/v1/rules/upload?rules_name=test_rules&rules_type=ba_friendly", files=files)
+    r = client.post(
+        "/api/v1/rules/upload?rules_name=test_rules&rules_type=ba_friendly",
+        files=files,
+        headers=AUTH_HEADERS,
+    )
     assert r.status_code == 200
     payload = r.json()
     assert payload["rules_id"] == "test_rules"
@@ -56,7 +66,11 @@ def test_upload_rules_technical_xlsx_success(monkeypatch, tmp_path):
     monkeypatch.setattr("src.api.routers.rules.RULES_DIR", tmp_path)
 
     files = {"file": ("rules.xlsx", b"PK", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
-    r = client.post("/api/v1/rules/upload?rules_name=tech_rules&rules_type=technical", files=files)
+    r = client.post(
+        "/api/v1/rules/upload?rules_name=tech_rules&rules_type=technical",
+        files=files,
+        headers=AUTH_HEADERS,
+    )
     assert r.status_code == 200
     assert r.json()["rules_id"] == "tech_rules"
     assert (tmp_path / "tech_rules.json").exists()
@@ -79,7 +93,7 @@ def test_upload_rules_defaults_to_ba_friendly(monkeypatch, tmp_path):
     monkeypatch.setattr("src.api.routers.rules.RULES_DIR", tmp_path)
 
     files = {"file": ("rules.csv", b"x", "text/csv")}
-    r = client.post("/api/v1/rules/upload?rules_name=default_rules", files=files)
+    r = client.post("/api/v1/rules/upload?rules_name=default_rules", files=files, headers=AUTH_HEADERS)
     assert r.status_code == 200
     assert called_with.get("converter") == "ba_friendly"
 

@@ -5,11 +5,12 @@ import sys
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
+from src.api.auth import require_role
 from src.config.ba_rules_template_converter import BARulesTemplateConverter
 from src.config.rules_template_converter import RulesTemplateConverter
 
@@ -25,6 +26,7 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 @router.post("/upload")
 async def upload_rules_template(
+    _=Depends(require_role("mapping_owner")),
     file: UploadFile = File(...),
     rules_name: str = Query(None, description="Name for the rules config"),
     rules_type: Literal["ba_friendly", "technical"] = Query("ba_friendly", description="ba_friendly or technical"),

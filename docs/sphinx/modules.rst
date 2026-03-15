@@ -135,6 +135,10 @@ Configuration & Validators
 API Routers
 -----------
 
+.. automodule:: src.api.auth
+   :members:
+   :undoc-members:
+
 Web UI
 ~~~~~~
 

@@ -229,6 +229,8 @@ All configuration is loaded from the `.env` file in the project root. Copy `.env
 | `ENVIRONMENT` | `dev` | One of `dev`, `staging`, `prod`. Controls log verbosity and safety checks. |
 | `LOG_LEVEL` | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`. Use `DEBUG` when troubleshooting. |
 | `FILE_RETENTION_HOURS` | `24` | Uploaded/temp files older than this many hours are removed on startup. Default: `24`. |
+| `API_KEYS` | `key-tester:tester,key-owner:mapping_owner,key-admin:admin` | Comma-separated API keys with optional `:role` suffix (`tester`, `mapping_owner`, `admin`). |
+| `ALLOWED_ORIGINS` | `https://internal-dashboard.bank.com` | Comma-separated CORS allowlist for browser callers. |
 
 > **Oracle DSN format**: `hostname:port/service_name`. Example: `oracle-db.corp.local:1521/PRODDB`. This uses oracledb **thin mode** — no Oracle Instant Client libraries are required on the machine.
 
@@ -257,6 +259,14 @@ ORACLE_DSN=localhost:1521/FREEPDB1
 ```
 
 The tool uses oracledb **thin mode** — no Oracle Instant Client is required.
+
+### API key roles (RBAC)
+
+- `tester`: run tests, view reports, read mappings
+- `mapping_owner`: tester permissions + upload/delete mappings and upload rules
+- `admin`: all permissions including admin-only system endpoints (`/api/v1/system/metrics`, `/api/v1/system/slo-alerts`)
+
+Pass keys in the `X-API-Key` header.
 
 ### Source tables (SHAW→C360 validation)
 

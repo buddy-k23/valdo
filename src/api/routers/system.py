@@ -5,7 +5,7 @@ from src.api.models.response import HealthResponse, SystemInfoResponse
 from datetime import datetime
 import sys
 
-from src.api.auth import require_api_key
+from src.api.auth import require_api_key, require_role
 from src.services.metrics_registry import METRICS
 
 router = APIRouter()
@@ -41,12 +41,12 @@ async def system_info(_=Depends(require_api_key)):
 
 
 @router.get("/metrics")
-async def metrics_snapshot(_=Depends(require_api_key)):
+async def metrics_snapshot(_=Depends(require_role("admin"))):
     """Return runtime metrics snapshot for dashboard ingestion."""
     return METRICS.snapshot()
 
 
 @router.get("/slo-alerts")
-async def slo_alerts(_=Depends(require_api_key)):
+async def slo_alerts(_=Depends(require_role("admin"))):
     """Return evaluated SLO alerts for operators."""
     return {"alerts": METRICS.slo_alerts()}

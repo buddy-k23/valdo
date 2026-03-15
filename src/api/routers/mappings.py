@@ -1,6 +1,6 @@
 """Mapping management endpoints."""
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query
 from typing import List
 import sys
 from pathlib import Path
@@ -11,6 +11,7 @@ import shutil
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
+from src.api.auth import require_role
 from src.api.models.mapping import (
     MappingCreate,
     MappingResponse,
@@ -33,6 +34,7 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_template(
+    _=Depends(require_role("mapping_owner")),
     file: UploadFile = File(...),
     mapping_name: str = Query(None, description="Name for the mapping"),
     file_format: str = Query(None, description="File format: fixed_width, pipe_delimited, csv, tsv")
@@ -186,7 +188,7 @@ async def validate_mapping(mapping: MappingCreate):
 
 
 @router.delete("/{mapping_id}")
-async def delete_mapping(mapping_id: str):
+async def delete_mapping(mapping_id: str, _=Depends(require_role("mapping_owner"))):
     """
     Delete mapping by ID.
     
