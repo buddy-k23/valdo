@@ -1309,3 +1309,8 @@ python -m src.main submit-task \
 ```
 
 If input is invalid, CLI exits non-zero and prints machine-readable errors when `--machine-errors` is set.
+
+
+## Notification configuration
+
+`run-tests` supports optional suite-level notifications (`on_success`, `on_failure`) with `email` and `teams_webhook` targets. SMTP uses `SMTP_HOST`, `SMTP_PORT`, and `SMTP_FROM`. Notification errors are logged and do not fail suite execution.

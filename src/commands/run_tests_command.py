@@ -16,6 +16,7 @@ import yaml
 from src.contracts.test_suite import TestConfig, TestSuiteConfig
 from src.reports.renderers.suite_renderer import SuiteReporter
 from src.utils.params import resolve_params
+from src.utils.notifier import EmailNotifier, WebhookNotifier
 
 try:
     from src.services.run_history_service import write_run_to_db as _db_write_run
@@ -406,6 +407,29 @@ def _compute_overall_status(results: list[dict[str, Any]]) -> str:
     return overall
 
 
+
+
+def _send_notifications(suite: TestSuiteConfig, results: list[dict[str, Any]], run_id: str, report_path: str) -> None:
+    """Best-effort notifications for suite completion; failures are non-fatal."""
+    cfg = getattr(suite, "notifications", None) or {}
+    passed = sum(1 for r in results if r.get("status") == "PASS")
+    failed = len(results) - passed
+    outcome = "success" if failed == 0 else "failure"
+    targets = cfg.get(f"on_{outcome}", []) if isinstance(cfg, dict) else []
+    subject = f"[{outcome.upper()}] {suite.name} Test Suite"
+    body = f"Suite: {suite.name}\nResult: {outcome.upper()} ({passed}/{len(results)} passed)\nRun ID: {run_id}\nReport: {report_path}"
+
+    for target in targets:
+        try:
+            kind = target.get("type")
+            if kind == "email":
+                EmailNotifier().send(target.get("to", []), subject, body)
+            elif kind == "teams_webhook":
+                WebhookNotifier().send(target.get("url", ""), {"text": body})
+        except Exception:
+            # Notification failures must not fail the suite run.
+            continue
+
 def _append_run_history(
     output_dir: str,
     run_id: str,
@@ -562,6 +586,8 @@ def run_suite_from_path(
         archive_path_str = str(archive_run_dir)
     except Exception as exc:
         click.echo(f"[archive] warning: could not archive run {run_id}: {exc}", err=True)
+
+    _send_notifications(suite, results, run_id, suite_report_path)
 
     _append_run_history(
         output_dir=output_dir,
