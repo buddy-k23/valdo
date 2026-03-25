@@ -918,6 +918,17 @@ def submit_task(intent, payload, task_id, trace_id, idempotency_key, priority, d
     click.echo(json.dumps(result.model_dump(), indent=2))
 
 
+@cli.command()
+@click.option('--host', default='0.0.0.0', show_default=True,
+              help='Bind address for the server')
+@click.option('--port', default=8000, type=int, show_default=True,
+              help='Port to listen on')
+def serve(host, port):
+    """Start the FastAPI validation server."""
+    import uvicorn
+    uvicorn.run("src.api.main:app", host=host, port=port)
+
+
 def main():
     """Main entry point."""
     from src.commands.schedule_command import schedule

@@ -19,6 +19,7 @@ from src.api.routers.ui import router as ui_router
 from src.api.routers.runs import router as runs_router, schedule_router
 from src.api.routers import rules as rules_router_mod
 from src.api.routers.api_tester import router as api_tester_router
+from src.api.routers.webhook import router as webhook_router
 from src.utils.cleanup import cleanup_old_files
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,11 @@ app.include_router(
     tags=["Rules"]
 )
 app.include_router(api_tester_router)
+app.include_router(
+    webhook_router,
+    prefix="/api/v1/webhook",
+    tags=["Webhook"]
+)
 
 # Serve generated reports
 _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
