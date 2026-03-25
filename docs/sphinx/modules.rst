@@ -24,6 +24,10 @@ Commands
    :members:
    :undoc-members:
 
+.. automodule:: src.commands.schedule_command
+   :members:
+   :undoc-members:
+
 Database
 --------
 
@@ -187,6 +191,10 @@ Services
    :members:
    :undoc-members:
 
+.. automodule:: src.services.scheduler_service
+   :members:
+   :undoc-members:
+
 Contracts & Adapters
 --------------------
 
@@ -203,6 +211,13 @@ Contracts & Adapters
    :undoc-members:
 
 .. automodule:: src.adapters.cli_task_adapter
+   :members:
+   :undoc-members:
+
+Pipeline
+--------
+
+.. automodule:: src.pipeline.suite_config
    :members:
    :undoc-members:
 

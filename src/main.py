@@ -920,6 +920,8 @@ def submit_task(intent, payload, task_id, trace_id, idempotency_key, priority, d
 
 def main():
     """Main entry point."""
+    from src.commands.schedule_command import schedule
+    cli.add_command(schedule)
     cli()
 
 

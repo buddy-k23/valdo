@@ -1236,6 +1236,8 @@ cm3-batch extract -t <table>            # Extract from DB
 cm3-batch reconcile -m <mapping>        # Reconcile mapping
 cm3-batch list-runs                     # List archived suite runs
 cm3-batch get-run <run_id>              # Inspect a specific run
+cm3-batch schedule list                 # List configured suites
+cm3-batch schedule run <suite-name>     # Run a suite immediately
 ```
 
 ### API Endpoints
@@ -1246,6 +1248,8 @@ GET  /api/v1/mappings/                  # List mappings
 POST /api/v1/files/detect               # Detect format
 POST /api/v1/files/parse                # Parse file
 POST /api/v1/files/compare              # Compare files
+GET  /api/v1/schedules                  # List configured suites
+POST /api/v1/schedules/run              # Trigger a suite run
 ```
 
 ### Python Usage
@@ -1297,6 +1301,95 @@ curl -X POST http://cm3-server:8000/api/v1/runs/trigger \
 ```
 
 Check status: `GET /api/v1/runs/{run_id}`
+
+---
+
+## Scheduled and Triggered Validation Runs
+
+Suite definitions live in `config/suites/` as YAML files.  Each file describes
+a named suite of `validate` steps that can be run on demand from the CLI or
+the API.
+
+### Suite YAML format
+
+```yaml
+name: daily-validation
+description: Daily validation suite for Shaw-to-C360 migration files
+steps:
+  - name: Validate customer file
+    type: validate
+    file_pattern: data/samples/customers.txt
+    mapping: config/mappings/customer_mapping.json
+    rules: null
+
+  - name: Validate transaction file
+    type: validate
+    file_pattern: data/samples/transactions.txt
+    mapping: config/mappings/transaction_mapping.json
+thresholds:
+  max_errors: 0
+```
+
+**Fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Unique suite identifier used as CLI argument and API key |
+| `description` | no | Human-readable summary shown in list views |
+| `steps` | yes | Ordered list of step definitions |
+| `thresholds` | no | Global threshold dict (e.g. `{max_errors: 0}`) |
+
+**Step fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Human-readable step label |
+| `type` | yes | `validate` or `compare` (compare is reserved for future use) |
+| `file_pattern` | yes | File path or glob pattern passed to the validate service |
+| `mapping` | no | Path to mapping JSON config |
+| `rules` | no | Path to rules config JSON |
+
+### CLI commands
+
+```bash
+# List all suites in config/suites/
+cm3-batch schedule list
+
+# List suites from a custom directory
+cm3-batch schedule list --suites-dir /path/to/suites
+
+# List suites as JSON (for scripting)
+cm3-batch schedule list --json-output
+
+# Run a suite by name (exits 1 on failure)
+cm3-batch schedule run daily-validation
+
+# Run from a custom suites directory and get JSON output
+cm3-batch schedule run daily-validation --suites-dir /path/to/suites --json-output
+```
+
+### API endpoints
+
+```
+GET  /api/v1/schedules              # List all configured suites
+POST /api/v1/schedules/run          # Run a suite immediately (synchronous)
+```
+
+**List suites:**
+
+```bash
+curl http://cm3-server:8000/api/v1/schedules
+# Returns: [{"name": "daily-validation", "description": "...", "step_count": 2}]
+```
+
+**Run a suite:**
+
+```bash
+curl -X POST http://cm3-server:8000/api/v1/schedules/run \
+  -H "Content-Type: application/json" \
+  -d '{"suite_name": "daily-validation"}'
+# Returns 202 with run_id, status, and step_results
+```
 
 ### Pipeline Templates
 
