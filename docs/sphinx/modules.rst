@@ -100,6 +100,10 @@ Configuration & Validators
    :members:
    :undoc-members:
 
+.. automodule:: src.config.models
+   :members:
+   :undoc-members:
+
 .. automodule:: src.config.mapping_parser
    :members:
    :undoc-members:
