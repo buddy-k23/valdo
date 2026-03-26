@@ -33,7 +33,7 @@ Automated file parsing, validation, and comparison tool for batch processing wit
 - **API Interface**: RESTful API for web-based access and integration
 - **Source Data Verification**: Validate generated files against trusted source data using custom SQL queries
 - **Test Suite Orchestration**: YAML-defined multi-test suites with parameterized run dates, Oracle vs file comparison, and consolidated HTML pass/fail summary
-- **Excel Test Builder**: Convert Excel-based test suite templates to YAML using `cm3-batch convert-suite`
+- **Excel Test Builder**: Convert Excel-based test suite templates to YAML using `valdo convert-suite`
 
 ## Documentation Navigation
 
@@ -70,7 +70,7 @@ bash scripts/setup_rhel.sh
 source .venv/bin/activate
 
 # Verify installation
-cm3-batch --help
+valdo --help
 ```
 
 #### Windows (PowerShell)
@@ -85,7 +85,7 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 .\.venv\Scripts\Activate.ps1
 
 # Verify installation
-cm3-batch --help
+valdo --help
 ```
 
 #### VS Code Users (All OS)
@@ -109,63 +109,63 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_vscode.ps1
 pip install -r requirements.txt
 pip install -e .
 
-# If cm3-batch is not found, use module form:
+# If valdo is not found, use module form:
 # .venv/bin/python -m src.main <command>
 
 # Check system info
-cm3-batch info
+valdo info
 
 # Detect file format
-cm3-batch detect -f data/samples/customers.txt
+valdo detect -f data/samples/customers.txt
 
 # Parse file
-cm3-batch parse -f data/samples/customers.txt
+valdo parse -f data/samples/customers.txt
 
 # Parse with chunked processing (large files)
-cm3-batch parse -f data/samples/customers.txt --use-chunked --chunk-size 50000 -o reports/parsed.csv
+valdo parse -f data/samples/customers.txt --use-chunked --chunk-size 50000 -o reports/parsed.csv
 
 # Validate file with HTML report
-cm3-batch validate -f data/samples/customers.txt -m config/mappings/customer_mapping.json -o reports/validation.html --detailed
+valdo validate -f data/samples/customers.txt -m config/mappings/customer_mapping.json -o reports/validation.html --detailed
 
 # Validate with chunked processing (large files)
-cm3-batch validate -f data/samples/customers.txt -m config/mappings/customer_mapping.json --use-chunked -o reports/validation.json
+valdo validate -f data/samples/customers.txt -m config/mappings/customer_mapping.json --use-chunked -o reports/validation.json
 
 # Strict fixed-width validation (field-level checks)
-cm3-batch validate -f data/files/p327_sample_errored.txt -m config/mappings/p327_mapping.json \
+valdo validate -f data/files/p327_sample_errored.txt -m config/mappings/p327_mapping.json \
   --strict-fixed-width --strict-level format --detailed \
   -o reports/p327_strict_validation.html
 
 # Chunked strict fixed-width validation (now includes field-level checks)
-cm3-batch validate -f data/files/p327_sample_errored.txt -m config/mappings/p327_mapping.json \
+valdo validate -f data/files/p327_sample_errored.txt -m config/mappings/p327_mapping.json \
   --use-chunked --strict-fixed-width --strict-level format --progress \
   -o reports/p327_chunked_strict_validation.html
 
 # Parallel chunked strict validation (multi-core)
-cm3-batch validate -f data/files/p327_sample_errored.txt -m config/mappings/p327_mapping.json \
+valdo validate -f data/files/p327_sample_errored.txt -m config/mappings/p327_mapping.json \
   --use-chunked --chunk-size 50000 --workers 3 --strict-fixed-width --strict-level format --progress \
   -o reports/p327_chunked_strict_parallel_validation.html
 
 # Compare files
-cm3-batch compare -f1 file1.txt -f2 file2.txt -k customer_id -o report.html
+valdo compare -f1 file1.txt -f2 file2.txt -k customer_id -o report.html
 
 # Compare with chunked processing (requires keys)
-cm3-batch compare -f1 file1.txt -f2 file2.txt -k customer_id --use-chunked --chunk-size 50000 -o report.html
+valdo compare -f1 file1.txt -f2 file2.txt -k customer_id --use-chunked --chunk-size 50000 -o report.html
 
 # Validate mapping against database
-cm3-batch reconcile -m config/mappings/customer_mapping.json
+valdo reconcile -m config/mappings/customer_mapping.json
 
 # Validate all mappings in a directory
-cm3-batch reconcile-all -d config/mappings -o reports/reconcile_all.json
+valdo reconcile-all -d config/mappings -o reports/reconcile_all.json
 
 # Detect reconciliation drift vs baseline
-cm3-batch reconcile-all -d config/mappings -o reports/reconcile_all_new.json \
+valdo reconcile-all -d config/mappings -o reports/reconcile_all_new.json \
   --baseline reports/reconcile_all_baseline.json --fail-on-drift
 
 # Extract data from database
-cm3-batch extract -t CUSTOMER -o output.txt -l 1000
+valdo extract -t CUSTOMER -o output.txt -l 1000
 
 # Convert business rules template
-cm3-batch convert-rules -t config/templates/rules.xlsx -o config/rules.json
+valdo convert-rules -t config/templates/rules.xlsx -o config/rules.json
 ```
 
 Chunk-based processing is supported by these CLI commands:
@@ -281,7 +281,7 @@ Sample manifest columns:
 You can run validation with business rules JSON and fail builds when violations are found:
 
 ```bash
-cm3-batch validate \
+valdo validate \
   -f data/samples/customers.txt \
   -m config/mappings/customer_mapping.json \
   -r config/rules/p327_business_rules.json \
@@ -365,9 +365,9 @@ Run multiple tests in one command using a YAML suite file.
 
 ```bash
 # Create YAML suite from Excel template
-cm3-batch convert-suite --template config/test_suites/my_suite.xlsx
+valdo convert-suite --template config/test_suites/my_suite.xlsx
 # Run the suite
-cm3-batch run-tests --suite config/test_suites/my_suite.yaml --params "run_date=20260301"
+valdo run-tests --suite config/test_suites/my_suite.yaml --params "run_date=20260301"
 ```
 
 For full suite YAML format and test type reference, see the [Test Suite Orchestration](#test-suite-orchestration) section in `docs/USAGE_GUIDE.md`.
@@ -448,7 +448,7 @@ source venv/bin/activate
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
-pip install -e .  # enables cm3-batch CLI command
+pip install -e .  # enables valdo CLI command
 ```
 
 ### 4. (Optional) Install Oracle Instant Client
