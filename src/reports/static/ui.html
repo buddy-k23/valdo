@@ -3381,6 +3381,13 @@ toggleAutoRefresh = function() {
       if (headingMatch) {
         var level = headingMatch[1].length;
         var hEl = document.createElement('h' + level);
+        // Generate ID for anchor links (e.g. "1. Getting Started" → "1-getting-started")
+        var headingId = headingMatch[2].toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+        hEl.id = headingId;
         appendInlineContent(hEl, headingMatch[2]);
         container.appendChild(hEl);
         continue;
@@ -3435,9 +3442,23 @@ toggleAutoRefresh = function() {
         var linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
         var a = document.createElement('a');
         a.textContent = linkMatch[1];
-        a.href = linkMatch[2];
-        a.target = '_blank';
-        a.rel = 'noopener';
+        var href = linkMatch[2];
+        if (href.charAt(0) === '#') {
+          // Anchor link — scroll within sidebar
+          a.href = 'javascript:void(0)';
+          a.setAttribute('data-anchor', href.slice(1));
+          a.addEventListener('click', (function(anchor) {
+            return function(e) {
+              e.preventDefault();
+              var target = document.getElementById(anchor);
+              if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            };
+          })(href.slice(1)));
+        } else {
+          a.href = href;
+          a.target = '_blank';
+          a.rel = 'noopener';
+        }
         parent.appendChild(a);
       } else {
         parent.appendChild(document.createTextNode(part));
