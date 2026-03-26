@@ -14,3 +14,9 @@ R012,name_min_length,FIRST_NAME,min_length,error,Yes,First name must be at least
 R013,ssn_format,SSN,regex,error,Yes,SSN must be 9 digits (no dashes),^\d{9}$
 R014,ssn_not_all_zeros,SSN,regex,error,Yes,SSN must not be all zeros,^(?!000000000)\d{9}$
 R015,cross_field_active_balance,STATUS|BALANCE,cross_field,warning,Yes,Active accounts should have a positive balance,STATUS=A AND BALANCE>0
+CR001,unique_account,LN-NUM-ERT,cross_row:unique,error,Yes,Account number must be unique,
+CR002,unique_combo,LN-NUM-ERT|BAT-ITM-NUM-ERT,cross_row:unique_composite,error,Yes,Account + batch item must be unique,
+CR003,consistent_bank,LN-NUM-ERT>BK-NUM-ERT,cross_row:consistent,error,Yes,Bank number must match for same account,
+CR004,sequential_items,LN-NUM-ERT>BAT-ITM-NUM-ERT,cross_row:sequential,error,Yes,Batch items must be sequential per account,1
+CR005,txn_count_match,LN-NUM-ERT>TRN-CNT-ERT,cross_row:group_count,error,Yes,Transaction count must match actual records,
+CR006,payment_limit,LN-NUM-ERT>OGL-PMT-AMT-LTD-ORI,cross_row:group_sum,warning,Yes,Total payments per account must not exceed limit,999999999

@@ -136,6 +136,10 @@ Configuration & Validators
    :members:
    :undoc-members:
 
+.. automodule:: src.validators.cross_row_validator
+   :members:
+   :undoc-members:
+
 .. automodule:: src.validators.rule_engine
    :members:
    :undoc-members:

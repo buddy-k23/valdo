@@ -154,6 +154,8 @@ class RuleEngine:
             return self._validate_field(rule, scoped_df)
         elif rule_type == 'cross_field':
             return self._validate_cross_field(rule, scoped_df)
+        elif rule_type == 'cross_row':
+            return self._validate_cross_row(rule, scoped_df)
         else:
             raise ValueError(f"Unknown rule type: {rule_type}")
     
@@ -225,6 +227,22 @@ class RuleEngine:
         
         return violations
     
+    def _validate_cross_row(self, rule: Dict, df: pd.DataFrame) -> List[RuleViolation]:
+        """Delegate cross-row validation to CrossRowValidator.
+
+        Args:
+            rule: Rule configuration dict.  Must include a ``check`` key that
+                names one of the supported cross-row check types.
+            df: DataFrame filtered by any ``when`` condition.
+
+        Returns:
+            List of :class:`RuleViolation` objects produced by
+            :class:`~src.validators.cross_row_validator.CrossRowValidator`.
+        """
+        from src.validators.cross_row_validator import CrossRowValidator
+        validator = CrossRowValidator()
+        return validator.validate(rule, df)
+
     def _validate_cross_field(self, rule: Dict, df: pd.DataFrame) -> List[RuleViolation]:
         """
         Validate relationships between fields.

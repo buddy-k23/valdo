@@ -1224,6 +1224,134 @@ validation.
 }
 ```
 
+### Cross-Row Validation
+
+Cross-row rules validate properties that span multiple rows rather than
+individual field values.  Set `"type": "cross_row"` and add a `"check"`
+key that names one of the six supported check types.
+
+The optional `when` condition is applied first (as for all rule types), so
+cross-row checks operate only on the filtered subset of rows.
+
+#### check: unique
+
+No duplicate values in a single field.
+
+```json
+{
+  "id": "CR001",
+  "name": "Account number must be unique",
+  "type": "cross_row",
+  "check": "unique",
+  "field": "LN-NUM-ERT",
+  "severity": "error",
+  "enabled": true
+}
+```
+
+#### check: unique_composite
+
+No duplicate combinations across a list of fields.
+
+```json
+{
+  "id": "CR002",
+  "name": "Account + batch item must be unique",
+  "type": "cross_row",
+  "check": "unique_composite",
+  "fields": ["LN-NUM-ERT", "BAT-ITM-NUM-ERT"],
+  "severity": "error",
+  "enabled": true
+}
+```
+
+#### check: consistent
+
+All rows that share the same value in `key_field` must have the same value in
+`target_field`.
+
+```json
+{
+  "id": "CR003",
+  "name": "Bank number must match for same account",
+  "type": "cross_row",
+  "check": "consistent",
+  "key_field": "LN-NUM-ERT",
+  "target_field": "BK-NUM-ERT",
+  "severity": "error",
+  "enabled": true
+}
+```
+
+#### check: sequential
+
+The `sequence_field` values within each `key_field` group must form a complete
+sequence `1, 2, 3, …, N` (where `N` is the number of rows in the group).
+Row order in the file does not matter — only the set of values is checked.
+
+```json
+{
+  "id": "CR004",
+  "name": "Batch items must be sequential per account",
+  "type": "cross_row",
+  "check": "sequential",
+  "key_field": "LN-NUM-ERT",
+  "sequence_field": "BAT-ITM-NUM-ERT",
+  "severity": "error",
+  "enabled": true
+}
+```
+
+#### check: group_count
+
+The actual number of rows per `key_field` group must equal the value declared
+in `count_field`.  All rows in a mismatched group are flagged.
+
+```json
+{
+  "id": "CR005",
+  "name": "Transaction count must match actual records",
+  "type": "cross_row",
+  "check": "group_count",
+  "key_field": "LN-NUM-ERT",
+  "count_field": "TRN-CNT-ERT",
+  "severity": "error",
+  "enabled": true
+}
+```
+
+#### check: group_sum
+
+The sum of `sum_field` across a `key_field` group must fall within
+`[min_value, max_value]`.  Either bound is optional.
+
+```json
+{
+  "id": "CR006",
+  "name": "Total payments per account must not exceed limit",
+  "type": "cross_row",
+  "check": "group_sum",
+  "key_field": "LN-NUM-ERT",
+  "sum_field": "OGL-PMT-AMT-LTD-ORI",
+  "max_value": 999999999,
+  "severity": "warning",
+  "enabled": true
+}
+```
+
+| Check | Required keys | Optional keys |
+|---|---|---|
+| `unique` | `field` | `when` |
+| `unique_composite` | `fields` (list) | `when` |
+| `consistent` | `key_field`, `target_field` | `when` |
+| `sequential` | `key_field`, `sequence_field` | `when` |
+| `group_count` | `key_field`, `count_field` | `when` |
+| `group_sum` | `key_field`, `sum_field` | `min_value`, `max_value`, `when` |
+
+Missing columns are silently skipped (a warning is emitted to the log) so that
+a rules file remains forward-compatible with files that may not yet have all
+fields present.
+
 ### Suite YAML Format
 
 Suite files define multi-step validation or comparison workflows.

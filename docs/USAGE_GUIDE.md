@@ -339,6 +339,67 @@ valdo convert-rules \
 
 > All exported CSV files include a `source_row` column identifying the original line number in the source file. This column is also shown in HTML error and difference tables for easy trace-back.
 
+### 5a. Cross-Row Rules
+
+Cross-row rules validate properties that span multiple rows rather than
+individual cells.  Use `"type": "cross_row"` in your rules JSON with one of
+six `"check"` values:
+
+| Check | What it validates |
+|---|---|
+| `unique` | No duplicate values in a single field |
+| `unique_composite` | No duplicate combinations across a list of fields |
+| `consistent` | All rows sharing a key have the same value in a target field |
+| `sequential` | Sequence field is 1, 2, 3, ... within each key group |
+| `group_count` | Actual row count per key equals the value in a declared count field |
+| `group_sum` | Sum of a field per key falls within optional min/max bounds |
+
+**Example rules JSON:**
+
+```json
+{
+  "rules": [
+    {
+      "id": "CR001",
+      "name": "Account number must be unique",
+      "type": "cross_row",
+      "check": "unique",
+      "field": "LN-NUM-ERT",
+      "severity": "error",
+      "enabled": true
+    },
+    {
+      "id": "CR003",
+      "name": "Bank number consistent per account",
+      "type": "cross_row",
+      "check": "consistent",
+      "key_field": "LN-NUM-ERT",
+      "target_field": "BK-NUM-ERT",
+      "severity": "error",
+      "enabled": true
+    },
+    {
+      "id": "CR006",
+      "name": "Total payments must not exceed limit",
+      "type": "cross_row",
+      "check": "group_sum",
+      "key_field": "LN-NUM-ERT",
+      "sum_field": "OGL-PMT-AMT-LTD-ORI",
+      "max_value": 999999999,
+      "severity": "warning",
+      "enabled": true
+    }
+  ]
+}
+```
+
+The `when` condition works the same as for field-level rules: rows are filtered
+first, then the cross-row check runs on the surviving subset.
+
+For full documentation of every check type and all supported keys, see the
+[Cross-Row Validation](USAGE_AND_OPERATIONS_GUIDE.md#cross-row-validation)
+section of the Operations Guide.
+
 ### 6. Validation
 
 Validate a file against mapping rules and generate comprehensive HTML reports:
