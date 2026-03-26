@@ -1570,6 +1570,21 @@
   <div id="panel-mapping" class="panel panel-hidden" role="tabpanel" aria-labelledby="tab-mapping">
     <h2>Mapping Generator</h2>
 
+    <!-- Download Templates -->
+    <div style="margin-bottom:18px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface)">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <a href="/static/templates/mapping_template.csv" download class="btn btn-secondary" style="font-size:12px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:5px">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m0 0l-4-4m4 4l4-4M4 19h16"/></svg>
+          Mapping Template (.csv)
+        </a>
+        <a href="/static/templates/rules_template.csv" download class="btn btn-secondary" style="font-size:12px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:5px">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m0 0l-4-4m4 4l4-4M4 19h16"/></svg>
+          Rules Template (.csv)
+        </a>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted)">Download a template, fill it in with your field definitions, then upload it above to generate a mapping.</div>
+    </div>
+
     <!-- Step indicators -->
     <div class="step-indicators">
       <div class="step active" id="mapStep1">

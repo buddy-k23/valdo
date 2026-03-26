@@ -1,0 +1,8 @@
+field_name,data_type,position,length,target_name,required,description
+ACCOUNT_NUM,String,1,18,account_number,Yes,Customer account number
+FIRST_NAME,String,19,30,first_name,Yes,Customer first name
+LAST_NAME,String,49,30,last_name,Yes,Customer last name
+SSN,String,79,9,ssn,No,Social security number
+BALANCE,Numeric,88,12,balance,Yes,Account balance
+OPEN_DATE,Date,100,8,open_date,Yes,Account open date (CCYYMMDD)
+STATUS,String,108,1,status,Yes,Account status (A/I/C)

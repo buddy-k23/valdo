@@ -1,0 +1,6 @@
+Rule ID,Rule Name,Field,Type,Severity,Enabled,Message,Value
+R001,account_not_empty,ACCOUNT_NUM,not_empty,error,Yes,Account number must not be empty,
+R002,balance_positive,BALANCE,min_value,warning,Yes,Balance should be positive,0
+R003,status_valid,STATUS,valid_values,error,Yes,Status must be A I or C,A|I|C
+R004,date_format,OPEN_DATE,date_format,error,Yes,Date must be CCYYMMDD,CCYYMMDD
+R005,name_not_empty,FIRST_NAME,not_empty,error,Yes,First name must not be empty,

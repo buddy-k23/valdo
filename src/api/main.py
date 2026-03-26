@@ -127,6 +127,10 @@ _REPORTS_DIR = Path(__file__).parent.parent.parent / "reports"
 _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/reports", StaticFiles(directory=str(_REPORTS_DIR)), name="reports")
 
+_TEMPLATES_DIR = Path(__file__).parent.parent / "reports" / "static" / "templates"
+_TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static/templates", StaticFiles(directory=str(_TEMPLATES_DIR)), name="templates")
+
 _DOCS_DIR = Path(__file__).parent.parent.parent / "docs"
 
 
