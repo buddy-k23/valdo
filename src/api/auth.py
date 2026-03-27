@@ -53,10 +53,20 @@ def verify_api_key(
         HTTPException: 401 if header is missing.
         HTTPException: 403 if key is invalid.
     """
+    keys = _parse_api_keys()
+
+    # If no API keys configured, allow all requests (dev mode)
+    if not keys:
+        return AuthContext(key_id="noauth", role="admin")
+
+    # Allow same-origin UI requests (Referer from /ui)
+    referer = request.headers.get("referer", "")
+    if not x_api_key and "/ui" in referer:
+        return AuthContext(key_id="ui-user", role="admin")
+
     if not x_api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-API-Key")
 
-    keys = _parse_api_keys()
     role = keys.get(x_api_key)
     if role is None:
         logger.warning("api_auth_failed path=%s reason=invalid_api_key", request.url.path)
