@@ -90,3 +90,7 @@ uploads/
 state/
 docs/sphinx/_build/
 docs/sphinx/state/
+
+# Generated mapping/rules CSVs (may contain proprietary field names)
+config/generated-mappings/
+config/generated-rules/

@@ -9,7 +9,7 @@
 - API: `src/api/main.py` (FastAPI app at port 8000)
 - Web UI: `src/reports/static/ui.html` (served at `/ui`)
 
-**Test suite:** 976 unit tests + 46 E2E Playwright tests = 1022 total, 84% coverage
+**Test suite:** 1024 unit tests + 46 E2E Playwright tests = 1070 total, 84% coverage
 
 **Active branch:** `main`
 
@@ -20,6 +20,7 @@
 | Command | Description |
 |---------|-------------|
 | `valdo validate` | Validate a batch file against a mapping |
+| `valdo validate --multi-record` | Validate a multi-record-type file (header/detail/trailer) |
 | `valdo compare` | Compare two batch files row-by-row |
 | `valdo db-compare` | Compare Oracle DB extract against a file |
 | `valdo extract` | Extract Oracle table/query to flat file |
@@ -41,6 +42,7 @@
 - **Field validation:** not_empty, regex, numeric, date_format, valid_values, min/max_value, exact_length, min_length
 - **Cross-field:** validate relationships between fields in the same row
 - **Cross-row:** validate across rows grouped by key columns — unique, unique_composite, consistent, sequential, group_count, group_sum
+- **Multi-record-type:** validate files containing interleaved record types (e.g. header/detail/trailer) with per-type mappings, cardinality constraints, and 7 cross-type checks (required_companion, header_trailer_count, header_trailer_sum, header_detail_consistent, header_trailer_match, type_sequence, expect_count)
 - **PII scrubbing:** `--suppress-pii` flag redacts field values in reports (default: enabled)
 
 ### Database Integration
@@ -157,8 +159,11 @@ src/
   api/routers/       # FastAPI route handlers (thin — delegate to services)
   commands/          # CLI command handlers (thin — delegate to services)
   services/          # Business logic layer
-  validators/        # Rule engine, field validator, cross-row validator
+  validators/        # Rule engine, field validator, cross-row validator, multi-record & cross-type validators
+    multi_record_validator.py  # Orchestrates per-type + cross-type validation
+    cross_type_validator.py    # 7 cross-record-type checks
   config/            # Mapping/rules converters, DB config, Pydantic models
+    multi_record_config.py     # Pydantic models for multi-record YAML config
   database/          # Oracle connection, reconciliation, run history
     adapters/        # Pluggable DB adapters (oracle, postgresql, sqlite)
   pipeline/          # Suite runner, suite config, ETL pipeline runner
@@ -170,9 +175,12 @@ src/
 config/
   mappings/          # Generated mapping JSON files
   rules/             # Generated rules JSON files
+  multi-record/      # Multi-record-type YAML configs (e.g. ATOCTRAN, TRANERT)
   suites/            # Test suite YAML definitions
   masking/           # Masking rules JSON
   pipelines/         # ETL pipeline YAML definitions
+  generated-mappings/  # (gitignored) locally generated mapping JSON from Excel specs
+  generated-rules/     # (gitignored) locally generated rules JSON from Excel specs
 prompts/             # AI prompt library for LLM-assisted config generation
 docs/
   USAGE_AND_OPERATIONS_GUIDE.md  # Comprehensive guide (2400+ lines)
@@ -183,7 +191,7 @@ docs/
   splunk-setup.md                # Audit log integration
   sphinx/                        # Auto-generated API reference
 tests/
-  unit/              # 976 unit tests (pytest)
+  unit/              # 1024 unit tests (pytest)
   e2e/               # 46 Playwright E2E tests
 ci/
   templates/         # Azure DevOps + GitLab CI reusable templates

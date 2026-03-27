@@ -13,6 +13,8 @@ across CLI, Web UI, REST API, and CI/CD environments.
 4. [CLI Reference](#4-cli-reference)
 5. [API Reference](#5-api-reference)
 6. [Configuration Reference](#6-configuration-reference)
+   - [Cross-Row Validation](#cross-row-validation)
+   - [Multi-Record-Type File Validation](#multi-record-type-file-validation)
 7. [CI Pipeline Integration](#7-ci-pipeline-integration)
 8. [Database Integration](#8-database-integration)
 9. [ETL Pipeline Testing](#9-etl-pipeline-testing)
@@ -497,6 +499,7 @@ valdo validate \
 | `--progress / --no-progress` | `--progress` | Show progress bar |
 | `--strict-fixed-width / --no-strict-fixed-width` | off | Strict fixed-width field checks |
 | `--strict-level` | `format` | Strict depth: `basic`, `format`, or `all` |
+| `--multi-record` | | Path to multi-record YAML config (for files with multiple record types) |
 
 #### Common examples
 
@@ -539,6 +542,18 @@ valdo validate \
 ```bash
 valdo validate -f data/batch/customers.txt -m config/mappings/customer_mapping.json --strict-level basic
 ```
+
+**Validate a multi-record-type file (header/detail/trailer):**
+
+```bash
+valdo validate \
+  -f output/ATOCTRAN.txt \
+  --multi-record config/multi-record/atoctran_config.yaml
+```
+
+See [Multi-Record-Type File Validation](#multi-record-type-file-validation)
+in the Configuration Reference for the full YAML format and cross-type rule
+reference.
 
 ### compare
 
@@ -1419,6 +1434,128 @@ The sum of `sum_field` across a `key_field` group must fall within
 Missing columns are silently skipped (a warning is emitted to the log) so that
 a rules file remains forward-compatible with files that may not yet have all
 fields present.
+
+### Multi-Record-Type File Validation
+
+#### What it solves
+
+Some batch files (e.g. ATOCTRAN, TRANERT) contain multiple record types
+interleaved in a single file.  For example, a file may have record-type codes
+100/200/300, or Header/CUS/ORI/COD rows, where each type has different fields
+at different positions.  Standard single-mapping validation cannot handle these
+files because every line would be parsed against the wrong layout.
+
+Multi-record validation solves this by:
+
+1. Reading a **discriminator** value from a fixed position in each line.
+2. Routing each line to the correct **per-type mapping and rules**.
+3. Enforcing **cardinality constraints** (exactly one header, at least one detail, etc.).
+4. Running **cross-type rules** that validate relationships between record type groups.
+
+#### CLI usage
+
+```bash
+valdo validate \
+  --file output/ATOCTRAN.txt \
+  --multi-record config/multi-record/atoctran_config.yaml
+```
+
+When `--multi-record` is provided, the `--mapping` and `--rules` flags are
+ignored because each record type specifies its own mapping and rules inside the
+YAML config.
+
+#### Multi-record YAML config format
+
+```yaml
+discriminator:
+  field: REC_TYPE        # Logical name (used in violation messages)
+  position: 1            # 1-indexed start column
+  length: 3              # Characters to read
+
+record_types:
+  header:
+    match: "HDR"                              # Discriminator value
+    mapping: "config/mappings/hdr_mapping.json"
+    rules: "config/rules/hdr_rules.json"      # Optional
+    expect: exactly_one                       # exactly_one | at_least_one | any
+
+  detail:
+    match: "DTL"
+    mapping: "config/mappings/dtl_mapping.json"
+    rules: "config/rules/dtl_rules.json"
+    expect: at_least_one
+
+  trailer:
+    match: "TRL"
+    mapping: "config/mappings/trl_mapping.json"
+    expect: exactly_one
+
+cross_type_rules:
+  - check: required_companion
+    when_type: header
+    requires_type: detail
+    severity: error
+
+  - check: header_trailer_count
+    record_type: trailer
+    trailer_field: RECORD_COUNT
+    count_of: detail
+    severity: error
+
+default_action: warn   # warn | error | skip (for unrecognized discriminator values)
+```
+
+**Position-based matching:** Instead of `match`, use `position: first` or
+`position: last` to identify header/trailer rows by their location in the file.
+
+#### Cross-type rule reference
+
+| Check | Description |
+|---|---|
+| `required_companion` | If `when_type` is present, `requires_type` must also exist |
+| `header_trailer_count` | Trailer count field must equal the actual number of detail rows |
+| `header_trailer_sum` | Trailer sum field must equal the sum of a detail field across all detail rows |
+| `header_detail_consistent` | A header field value must match the same field in every detail row |
+| `header_trailer_match` | A header field and a trailer field must have equal values |
+| `type_sequence` | Record types must appear in the declared order (e.g. header before detail before trailer) |
+| `expect_count` | A record type group must contain exactly N rows |
+
+Each rule supports `severity` (`error` or `warning`) and an optional `message`
+template.
+
+#### API endpoint
+
+**POST /api/v1/multi-record/generate** -- accepts a JSON body describing the
+multi-record structure and returns a downloadable YAML config file.
+
+```json
+{
+  "discriminator": {"field": "REC_TYPE", "position": 1, "length": 3},
+  "record_types": {
+    "header":  {"match": "HDR", "mapping": "config/mappings/hdr.json"},
+    "detail":  {"match": "DTL", "mapping": "config/mappings/dtl.json"},
+    "trailer": {"match": "TRL", "mapping": "config/mappings/trl.json", "expect": "exactly_one"}
+  },
+  "cross_type_rules": [
+    {"check": "required_companion", "when_type": "header", "requires_type": "detail"},
+    {"check": "header_trailer_count", "record_type": "trailer", "trailer_field": "RECORD_COUNT", "count_of": "detail"}
+  ],
+  "default_action": "warn"
+}
+```
+
+The response is an `application/x-yaml` attachment that can be saved directly
+and used with `--multi-record`.
+
+#### Generating mapping/rules CSVs from Excel specs
+
+For batch generation of per-record-type mappings and rules from Excel
+specification documents, use the AI prompt library in `prompts/`.  The prompts
+guide an LLM (Copilot, Claude, ChatGPT) to produce Valdo-compatible CSV
+templates from COBOL copybooks, Excel field specs, or PDF layouts.  The
+generated CSVs can then be uploaded via the Mapping Generator tab or the
+`POST /api/v1/mappings/upload` endpoint to produce the JSON config files
+referenced in the multi-record YAML.
 
 ### Suite YAML Format
 

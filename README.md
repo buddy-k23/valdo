@@ -1,48 +1,73 @@
 # Valdo
 
-Automated file parsing, validation, and comparison tool for batch processing with Oracle database integration and REST API.
+Automated batch file validation, comparison, and ETL testing tool with multi-database support, REST API, and modern web UI.
+
+**1,024 unit tests + 46 E2E tests | 80%+ coverage | ADA/WCAG 2.1 AA compliant**
 
 ## Features
 
-### Core Capabilities
-- **Universal Mapping Structure**: Standardized mapping format for all file types (pipe-delimited, fixed-width, CSV, TSV)
-- **Template-Based Configuration**: Create mappings from Excel/CSV templates without custom scripts
-- **File Parsing**: Support for multiple file formats with auto-detection
-- **Database Integration**: Oracle database connectivity with `oracledb` (thin mode supported)
-- **Data Validation**: Comprehensive validation with interactive HTML reports
-- **File Comparison**: Compare files and identify differences with field-level analysis
-- **Self-Contained HTML Reports**: Generate detailed comparison and validation reports — all reports embed Chart.js inline, no internet access required
-- **REST API**: FastAPI-based REST API with Swagger UI (interactive documentation)
+### File Validation
+- **Multi-format support**: Fixed-width, CSV, TSV, pipe-delimited with auto-detection
+- **Multi-record-type files**: Configurable discriminator routes rows to per-type mappings (e.g. ATOCTRAN 100/200/300, TRANERT Header/CUS/ORI/COD)
+- **Header/trailer validation**: 7 cross-type checks (count reconciliation, sum matching, companion records, sequence ordering)
+- **Business rules engine**: not_empty, regex, numeric, date_format, valid_values, min/max, exact_length
+- **Cross-field rules**: IF/THEN validation between fields in the same row
+- **Cross-row rules**: unique, sequential, consistent, group_count, group_sum across rows grouped by key
+- **PII scrubbing**: Redact field values in HTML/CSV reports by default (`--suppress-pii`)
 
-### Validation Features (New!)
-- **Interactive Field-Level Analysis**: Search, sort, and paginate through field statistics
-- **Date Field Detection**: Automatic detection of date fields with YYYYMMDD format support
-- **Data Quality Metrics**: Overall quality score, completeness, and uniqueness tracking
-- **Visual Dashboards**: Chart.js-powered visualizations and quality gauges
-- **Detailed Appendix**: Validation configuration, mapping details, and affected rows summary
-- **Duplicate Detection**: Identify and report duplicate records
-- **Issue Categorization**: Errors, warnings, and info messages with field-level details
-- **Business Rule Validation**: Execute complex validation rules defined in Excel/CSV templates
+### Database Integration
+- **Pluggable adapters**: Oracle, PostgreSQL, SQLite (configurable via `DB_ADAPTER` env var)
+- **DB-to-file comparison**: Extract from database, compare against batch file
+- **Schema reconciliation**: Validate mappings against actual DB schema with drift detection
+- **Data extraction**: Export tables/queries to flat files
 
-### Advanced Features
-- **Configurable**: JSON-based configuration for different environments
-- **Transaction Management**: Full transaction support with rollback and savepoints
-- **Schema Reconciliation**: Validate mappings against database schema
-- **Threshold Evaluation**: Configurable pass/fail criteria
-- **CLI Interface**: Command-line tools for all operations
-- **API Interface**: RESTful API for web-based access and integration
-- **Source Data Verification**: Validate generated files against trusted source data using custom SQL queries
-- **Test Suite Orchestration**: YAML-defined multi-test suites with parameterized run dates, Oracle vs file comparison, and consolidated HTML pass/fail summary
-- **Excel Test Builder**: Convert Excel-based test suite templates to YAML using `valdo convert-suite`
+### ETL Pipeline Testing
+- **Gate-based orchestration**: `valdo run-etl-pipeline` with YAML-defined validation gates
+- **Per-source validation**: Template expansion for multi-source batch pipelines
+- **Blocking/non-blocking gates**: Stop pipeline on critical failures, warn on soft checks
+- **Threshold evaluation**: Max errors, max error percentage, min rows
 
-## Documentation Navigation
+### Data Masking
+- **6 strategies**: preserve, preserve_format, deterministic_hash, random_range, redact, fake_name
+- **Fixed-width safe**: Preserves exact record lengths
+- **Deterministic**: Same input always produces same masked output (referential integrity)
 
-- **Canonical index**: `docs/DOCUMENTATION_INDEX.md`
-- **Functionality matrix**: `docs/FUNCTIONALITY_MATRIX.md`
-- **Architecture diagrams**: `docs/architecture.md`
-- **Hands-on usage**: `docs/USAGE_GUIDE.md`
-- **Installation guide**: `docs/INSTALL.md` — local installation guide (Windows, Linux, VSCode)
-- **Testing**: `docs/TESTING_GUIDE.md`
+### Security & Compliance
+- **Secret vault integration**: env, HashiCorp Vault, Azure Key Vault (`SECRETS_PROVIDER`)
+- **Structured audit logging**: Splunk-compatible JSONL with SHA-256 file hashing
+- **CODEOWNERS**: Config change approval workflow
+- **Config validation CI**: Automated mapping/rules/suite validation on PRs
+
+### Web UI
+- **4 tabs**: Quick Test, Recent Runs, Mapping Generator, API Tester
+- **Dark/light theme**: System preference detection, localStorage persistence
+- **Help sidebar**: Searchable usage guide with TOC navigation
+- **Downloadable templates**: Sample mapping and rules CSV files
+- **ADA/WCAG 2.1 AA**: Color contrast, keyboard navigation, ARIA, reduced motion
+
+### CI Pipeline Integration
+- **GitHub Actions**: Reusable composite action
+- **Azure DevOps**: Step template
+- **GitLab CI**: Extendable job template
+- **Docker**: `valdo` entrypoint, `ghcr.io` image
+- **Webhook**: Async validation with callback URL
+
+### AI Prompt Library (`prompts/`)
+- LLM prompts to generate mapping/rules CSVs from Excel/PDF specification documents
+- Works with Copilot, GitLab Duo, Claude, ChatGPT, Gemini
+- Handles COBOL picture clauses, IF/ELSE transformations, multi-sheet workbooks
+
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Usage & Operations Guide](docs/USAGE_AND_OPERATIONS_GUIDE.md) | Comprehensive guide (2,900+ lines) |
+| [Quick Reference](docs/USAGE_GUIDE.md) | CLI commands and API endpoints |
+| [Documentation Index](docs/DOCUMENTATION_INDEX.md) | All docs in one place |
+| [CI Integration Guide](docs/CI_INTEGRATION_GUIDE.md) | GitHub Actions, Azure, GitLab |
+| [Change Management](docs/CHANGE_MANAGEMENT.md) | Config approval workflow |
+| [Splunk Setup](docs/splunk-setup.md) | Audit log integration |
+| [Installation](docs/INSTALL.md) | Windows, Linux, VSCode setup |
 
 ## Quick Start
 

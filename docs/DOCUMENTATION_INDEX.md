@@ -22,6 +22,13 @@ This is the **single source of truth** for docs navigation.
 - See `valdorun-tests --help` and `valdoconvert-suite --help` for CLI reference
 - Example suite YAML: `config/test_suites/` directory
 
+## Multi-Record-Type Validation
+- `docs/USAGE_AND_OPERATIONS_GUIDE.md#multi-record-type-file-validation` — full reference (YAML config format, cross-type rules, API endpoint, CLI usage)
+- `config/multi-record/example_atoctran.yaml` — example multi-record YAML config
+- `src/config/multi_record_config.py` — Pydantic models
+- `src/validators/multi_record_validator.py` — orchestrator
+- `src/validators/cross_type_validator.py` — 7 cross-type check implementations
+
 ## Data & Mapping
 - `docs/MAPPING_QUICKSTART.md`
 - `docs/UNIVERSAL_MAPPING_GUIDE.md`
