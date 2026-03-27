@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 import logging
 import os
@@ -158,6 +158,17 @@ async def get_usage_guide(format: str = "markdown"):
         return PlainTextResponse("# Usage Guide\n\nGuide not found.", status_code=404)
     content = guide_path.read_text(encoding="utf-8")
     return PlainTextResponse(content, media_type="text/plain; charset=utf-8")
+
+
+_FAVICON_PATH = Path(__file__).parent.parent / "reports" / "static" / "favicon.svg"
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Serve the Valdo favicon."""
+    if _FAVICON_PATH.exists():
+        return FileResponse(_FAVICON_PATH, media_type="image/svg+xml")
+    return JSONResponse(status_code=404, content={})
 
 
 # Root endpoint
