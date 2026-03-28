@@ -1563,6 +1563,16 @@
       </select>
     </div>
 
+    <!-- Rules selector -->
+    <div class="mapping-search-wrap">
+      <div class="mapping-search-label">Rules (optional)</div>
+      <select id="rulesSelect" class="mapping-select" style="border-radius:10px"
+              data-tooltip="Select business rules to apply during validation"
+              aria-label="Select validation rules">
+        <option value="">— no rules —</option>
+      </select>
+    </div>
+
     <div class="btn-row">
       <button class="btn btn-primary btn-lg" id="btnValidate" disabled
               data-tooltip="Run structural validation against the selected mapping and rules">
@@ -1777,8 +1787,6 @@
             <button class="btn-copy" id="btnCopyMapJson" onclick="copyJson('mapJsonPreview','btnCopyMapJson')" title="Copy JSON to clipboard">Copy JSON</button>
           </div>
           <div class="json-preview" id="mapJsonPreview">No mapping generated yet.</div>
-        </div>
-
           <!-- Field summary table -->
           <div class="field-summary-table" id="mapFieldSummary" style="display:none">
             <div style="font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:var(--muted);margin:14px 0 8px">Field Summary</div>
@@ -2227,6 +2235,26 @@ async function loadMappings() {
   sel.addEventListener('change', updateButtons);
 }
 
+async function loadRules() {
+  var sel = document.getElementById('rulesSelect');
+  try {
+    var resp = await fetch('/api/v1/rules/');
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var list = await resp.json();
+    while (sel.childNodes.length > 1) sel.removeChild(sel.lastChild);
+    if (Array.isArray(list)) {
+      list.forEach(function(r) {
+        var o = document.createElement('option');
+        o.value = r.id || r.filename || r;
+        o.textContent = r.name || r.filename || r;
+        sel.appendChild(o);
+      });
+    }
+  } catch (err) {
+    console.warn('Could not load rules list:', err);
+  }
+}
+
 // ===========================================================================
 // Validate button loading state helper
 // ===========================================================================
@@ -2257,6 +2285,8 @@ document.getElementById('btnValidate').addEventListener('click', async function(
     var fd = new FormData();
     fd.append('file', primaryFile);
     fd.append('mapping_id', mapping);
+    var rulesVal = document.getElementById('rulesSelect').value;
+    if (rulesVal) { fd.append('rules_id', rulesVal); }
 
     var resp = await fetch('/api/v1/files/validate', { method: 'POST', body: fd });
     if (!resp.ok) {
@@ -2819,6 +2849,7 @@ setInterval(checkHealth, HEALTH_INTERVAL_MS);
 // Init
 // ---------------------------------------------------------------------------
 loadMappings();
+loadRules();
 loadRunHistory();
 
 // ===========================================================================
