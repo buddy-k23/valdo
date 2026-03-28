@@ -24,6 +24,26 @@ UPLOADS_DIR = _REPO_ROOT / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+@router.get("/")
+async def list_rules():
+    """List all available rules configurations."""
+    import json
+    rules = []
+    for f in sorted(RULES_DIR.glob("*.json")):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            meta = data.get("metadata", {})
+            rules.append({
+                "id": f.stem,
+                "name": meta.get("name", f.stem),
+                "filename": f.name,
+                "rule_count": len(data.get("rules", [])),
+            })
+        except Exception:
+            rules.append({"id": f.stem, "name": f.stem, "filename": f.name, "rule_count": 0})
+    return rules
+
+
 @router.post("/upload")
 async def upload_rules_template(
     _=Depends(require_role("mapping_owner")),

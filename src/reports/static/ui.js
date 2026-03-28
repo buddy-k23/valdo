@@ -271,7 +271,7 @@ async function loadRules() {
     var resp = await fetch('/api/v1/rules/');
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     var list = await resp.json();
-    while (sel.childNodes.length > 1) sel.removeChild(sel.lastChild);
+    while (sel.options.length > 1) sel.removeChild(sel.lastChild);
     if (Array.isArray(list)) {
       list.forEach(function(r) {
         var o = document.createElement('option');
