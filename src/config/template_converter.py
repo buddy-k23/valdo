@@ -210,7 +210,7 @@ class TemplateConverter:
         # Add allowed-values rule when provided
         if 'Valid Values' in row and pd.notna(row['Valid Values']):
             values_str = str(row['Valid Values']).strip()
-            if values_str:
+            if values_str and not self._is_descriptive_text(values_str):
                 # Support comma- or pipe-separated lists
                 delimiter = '|' if '|' in values_str else ','
                 valid_values = [v.strip() for v in values_str.split(delimiter) if v.strip()]
@@ -223,6 +223,17 @@ class TemplateConverter:
 
         return field
     
+    @staticmethod
+    def _is_descriptive_text(text: str) -> bool:
+        """Return True if text is a description rather than actual valid values."""
+        t = text.lower()
+        skip_phrases = [
+            'must be', 'is used', 'represents', 'starting', 'equal to',
+            'table', 'control', 'see ', 'refer', 'each digit', 'cycle id',
+            'if ', 'when ', 'the ', 'this ', 'valid loc', 'defined in',
+        ]
+        return any(phrase in t for phrase in skip_phrases) or len(text) > 60
+
     def _normalize_data_type(self, data_type: str) -> str:
         """Normalize data type to standard values."""
         data_type_lower = data_type.lower()

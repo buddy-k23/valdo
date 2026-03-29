@@ -57,8 +57,13 @@ Convert the spec's data types and format codes to Valdo types:
 
 - **Duplicate field names**: If a field appears multiple times (e.g. for different record types), include all occurrences — add a suffix like `_2` to avoid collisions
 - **FILLER fields**: Include them with `required=No` and description "Filler/reserved"
-- **Transformation column**: Ignore transformation logic for mapping CSV (it goes into rules CSV)
-- **Valid Values column**: Ignore for mapping CSV (it goes into rules CSV)
+- **Transformation column**: Summarize briefly in the `transformation` column (single line, no newlines)
+- **Valid Values column**: Include ONLY actual enumerated values, pipe-separated (e.g. `A|I|C`). Skip descriptions like "Bank Control Table" or sentences.
+- **CRITICAL — Length for fixed-width**: Every field MUST have a `length` value. If the spec doesn't provide it:
+  - Derive from format: `9(5)` → length 5, `X(18)` → length 18
+  - Derive from position: next field's position - this field's position
+  - If neither available, estimate from the data type (String=10, Numeric=8, Date=8) and add a comment in description
+- **Strip spaces**: Trim all trailing/leading spaces from field names, valid values, and descriptions
 
 ### Example
 

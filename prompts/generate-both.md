@@ -76,6 +76,12 @@ Rule ID,Rule Name,Field,Type,Severity,Enabled,Message,Value
 
 **Skip rules for:** FILLER fields, fields marked `N/A`, vague valid values like "Bank Control Table"
 
+**CRITICAL — Valid Values:** The Value column must contain ONLY actual codes/numbers, pipe-separated (e.g. `A|I|C` or `100|200|300`). NEVER put descriptions, sentences, or field references. If the text references another field, use `cross_field` type. If it's a sentence, skip it.
+
+**CRITICAL — Fixed-width Length:** Every field MUST have a `length` value. Derive from format (`9(5)`→5), position gaps, or estimate.
+
+**Strip spaces:** Trim all trailing/leading spaces from valid values and field names.
+
 **Rule IDs:** `R001`-`R999` for per-row rules, `CR001`-`CR999` for cross-row rules
 
 ---
