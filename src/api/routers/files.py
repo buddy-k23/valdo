@@ -150,10 +150,21 @@ async def validate_file(
     strict_fixed_width: bool = Form(False),
     strict_level: str = Form("format"),
     output_html: bool = Form(True),
+    suppress_pii: bool = Form(True),
 ):
     """Validate a file against a mapping with optional strict mode.
 
     Returns validation result including error list and optional HTML report URL.
+
+    Args:
+        file: The batch data file to validate.
+        mapping_id: Mapping config identifier (JSON filename stem under config/mappings/).
+        detailed: Include detailed field-level analysis.
+        strict_fixed_width: Enable strict fixed-width position checks.
+        strict_level: Validation strictness level (``'format'`` or ``'all'``).
+        output_html: When True, generate an HTML report alongside JSON results.
+        suppress_pii: When True (default), redact raw field values from the
+            HTML report. Set to False to show actual values in the report.
     """
     upload_path = UPLOADS_DIR / f"validate_{file.filename}"
     with open(upload_path, "wb") as buffer:
@@ -174,6 +185,7 @@ async def validate_file(
             strict_fixed_width=strict_fixed_width,
             strict_level=strict_level,
             use_chunked=_should_use_chunked(upload_path),
+            suppress_pii=suppress_pii,
         )
 
         return FileValidationResult(

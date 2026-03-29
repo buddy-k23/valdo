@@ -709,7 +709,18 @@ class ValidationReporter:
         """
 
     def _generate_dashboard_bar(self, results: Dict[str, Any]) -> str:
-        """Generate compact, single-screen KPI bar."""
+        """Generate compact, single-screen KPI bar.
+
+        Includes an Elapsed KPI when ``results['elapsed_seconds']`` is present,
+        so users can see how long the validation run took at a glance.
+
+        Args:
+            results: Validation result dict from EnhancedFileValidator /
+                run_validate_service.
+
+        Returns:
+            HTML string for the sticky dashboard bar.
+        """
         metrics = results.get('quality_metrics', {})
         appendix = results.get('appendix', {})
         affected = appendix.get('affected_rows', {}) if isinstance(appendix, dict) else {}
@@ -720,6 +731,9 @@ class ValidationReporter:
         if total_rows > 0:
             errored_rows = min(max(errored_rows, 0), total_rows)
         good_rows = max(total_rows - errored_rows, 0)
+
+        elapsed = results.get('elapsed_seconds')
+        elapsed_display = f"{elapsed}s" if elapsed is not None else "—"
 
         kpis = [
             ("Quality", f"{metrics.get('quality_score', 0)}%", "Overall score combining completeness, uniqueness, and validation outcomes."),
@@ -732,6 +746,7 @@ class ValidationReporter:
             ("Uniqueness", f"{metrics.get('uniqueness_pct', 0)}%", "Percent of rows that are unique (non-duplicate)."),
             ("Duplicates", f"{dup.get('duplicate_rows', 0):,}", "Number of detected duplicate rows."),
             ("Columns", f"{metrics.get('total_columns', 0):,}", "Total columns in the parsed dataset."),
+            ("Elapsed", elapsed_display, "Total wall-clock time for this validation run."),
         ]
 
         blocks = ''.join(

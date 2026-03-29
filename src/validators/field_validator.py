@@ -39,26 +39,36 @@ class FieldValidator:
         else:
             raise ValueError(f"Unknown numeric operator: {operator}")
     
-    def validate_list(self, df: pd.DataFrame, field: str, 
+    def validate_list(self, df: pd.DataFrame, field: str,
                      operator: str, values: List[Any]) -> pd.Series:
-        """
-        Validate field value is in/not in list.
-        
+        """Validate field value is in/not in a list of allowed values.
+
+        Both the field values and each entry in *values* are stripped of
+        leading/trailing whitespace before comparison. This ensures fixed-width
+        padded values (e.g. ``'LS  '``) match trimmed valid-value lists
+        (e.g. ``['LS']``).
+
         Args:
-            df: DataFrame
-            field: Field name
-            operator: 'in' or 'not_in'
-            values: List of valid values
-            
+            df: DataFrame containing the field to validate.
+            field: Column name to validate.
+            operator: ``'in'`` to flag values absent from the list, or
+                ``'not_in'`` to flag values present in the list.
+            values: Allowed (or excluded) value list. Each entry is stripped
+                before comparison.
+
         Returns:
-            Boolean mask where True indicates violation
+            Boolean Series where ``True`` indicates a violation.
+
+        Raises:
+            ValueError: When *operator* is not ``'in'`` or ``'not_in'``.
         """
         series = df[field].astype(str).str.strip()
-        
+        stripped_values = [str(v).strip() for v in values]
+
         if operator == 'in':
-            return ~series.isin(values)
+            return ~series.isin(stripped_values)
         elif operator == 'not_in':
-            return series.isin(values)
+            return series.isin(stripped_values)
         else:
             raise ValueError(f"Unknown list operator: {operator}")
     

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any, Optional
 
 _audit_logger = logging.getLogger(__name__)
@@ -45,6 +46,8 @@ def run_validate_service(
     from src.parsers.enhanced_validator import EnhancedFileValidator
     from src.parsers.fixed_width_parser import FixedWidthParser
     from src.utils.audit_logger import get_audit_logger, file_hash as _file_hash
+
+    _start_time = time.time()
 
     audit = get_audit_logger()
     _audit_kwargs: dict[str, Any] = {"triggered_by": "service", "file": file}
@@ -116,6 +119,8 @@ def run_validate_service(
             strict_fixed_width=strict_fixed_width,
             strict_level=strict_level,
         )
+
+    result["elapsed_seconds"] = round(time.time() - _start_time, 2)
 
     # Normalise counts so callers always get integers.
     result.setdefault("error_count", len(result.get("errors", [])))

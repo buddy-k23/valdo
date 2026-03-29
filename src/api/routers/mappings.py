@@ -89,12 +89,18 @@ async def upload_template(
             with open(output_path) as _f:
                 mapping_content = _json.load(_f)
 
+        conversion_warnings = mapping.get("warnings", [])
+        message = f"Template converted successfully. Mapping saved as '{mapping_id}'"
+        if conversion_warnings:
+            message += f". {len(conversion_warnings)} warning(s) — see 'warnings' field."
+
         response = {
             "filename": file.filename,
             "size": upload_path.stat().st_size,
             "mapping_id": mapping_id,
-            "message": f"Template converted successfully. Mapping saved as '{mapping_id}'",
+            "message": message,
             "mapping_content": mapping_content,
+            "warnings": conversion_warnings,
         }
         return response
     

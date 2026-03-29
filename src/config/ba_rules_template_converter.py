@@ -3,11 +3,50 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 import pandas as pd
+
+
+# Phrases that indicate the Expected/Values cell contains a prose description
+# rather than an enumeration of allowed values.
+_DESCRIPTIVE_PHRASES: tuple[str, ...] = (
+    "must be",
+    "is used for",
+    "represents",
+    "starting",
+    "equal to",
+)
+
+# Sentence-starting words that indicate a descriptive sentence, not a value list.
+_DESCRIPTIVE_STARTERS: tuple[str, ...] = (
+    "Cycle",
+    "Each",
+    "Must",
+    "Valid",
+)
+
+
+def _is_descriptive_text(text: str) -> bool:
+    """Return True when *text* looks like prose documentation rather than a value list.
+
+    Args:
+        text: The raw ``Expected / Values`` cell string.
+
+    Returns:
+        True if the text should be skipped for valid-values parsing.
+    """
+    lower = text.lower()
+    for phrase in _DESCRIPTIVE_PHRASES:
+        if phrase.lower() in lower:
+            return True
+    for starter in _DESCRIPTIVE_STARTERS:
+        if text.startswith(starter) and len(text.split()) > 3:
+            return True
+    return False
 
 
 class BARulesTemplateConverter:
@@ -151,9 +190,14 @@ class BARulesTemplateConverter:
             return rule
 
         if rule_type_text == 'allowed values':
-            delim = '|' if '|' in expected else ','
-            values = [v.strip() for v in expected.split(delim) if v.strip()]
-            rule['values'] = values
+            if expected and not _is_descriptive_text(expected):
+                delim = '|' if '|' in expected else ','
+                values = [v.strip() for v in expected.split(delim) if v.strip()]
+                rule['values'] = values
+            else:
+                # Descriptive text or empty — store an empty list so the rule
+                # structure is valid but no values constraint is applied.
+                rule['values'] = []
             return rule
 
         if rule_type_text in {'range', 'length'}:

@@ -317,6 +317,7 @@ document.getElementById('btnValidate').addEventListener('click', async function(
     fd.append('mapping_id', mapping);
     var rulesVal = document.getElementById('rulesSelect').value;
     if (rulesVal) { fd.append('rules_id', rulesVal); }
+    fd.append('suppress_pii', document.getElementById('suppressPii').checked ? 'true' : 'false');
 
     var resp = await fetch('/api/v1/files/validate', { method: 'POST', body: fd });
     if (!resp.ok) {

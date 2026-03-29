@@ -134,7 +134,20 @@ class TemplateConverter:
         if file_format == 'fixed_width':
             total_length = sum(f.get('length', 0) for f in mapping['fields'])
             mapping['total_record_length'] = total_length
-        
+
+        # Warn about fixed-width fields that have no usable length value.
+        warnings: list[str] = []
+        if file_format == 'fixed_width':
+            for field in mapping['fields']:
+                field_name = field.get('name', '<unknown>')
+                length_val = field.get('length')
+                if length_val is None or length_val == 0:
+                    warnings.append(
+                        f"Field '{field_name}' has no length defined — "
+                        "fixed-width parsing may produce incorrect results."
+                    )
+        mapping['warnings'] = warnings
+
         self.mapping = mapping
         return mapping
     
