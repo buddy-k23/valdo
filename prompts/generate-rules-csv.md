@@ -79,13 +79,38 @@ Extract these rules from the specification:
 1. **Required = Y** → Generate a `not_empty` rule
 2. **Format = 9(n)** → Generate a `numeric` rule
 3. **Format with date pattern** → Generate a `date_format` rule
-4. **Valid Values column** → Generate `valid_values` rule (skip vague entries like "Bank Control Table")
+4. **Valid Values column** → See CRITICAL rules below
 5. **Transformation with IF/ELSE** → Generate `cross_field` rule
 6. **Notes mentioning "sequential", "1st/2nd/nth"** → Generate `cross_row:sequential` rule
 7. **Notes mentioning "unique"** → Generate `cross_row:unique` rule
 8. **Fields with same name appearing in multiple rows** → Consider `cross_row:consistent` for key fields
 9. **Fields labeled as count/total** → Consider `cross_row:group_count` or `cross_row:group_sum`
 10. **Skip** rules for FILLER fields and fields marked `N/A` unless they have explicit validation
+
+### CRITICAL: Valid Values Rules
+
+The Value column must contain ONLY actual enumerated values, pipe-separated. **Never put descriptions, sentences, or references in this column.**
+
+**CORRECT — actual values pipe-separated:**
+```
+R007,status_valid,STATUS,valid_values,error,Yes,Status must be valid,A|I|C
+R008,txn_code_valid,TXN-CODE,valid_values,error,Yes,Transaction code must be valid,100|200|300|500
+R009,record_type_valid,REC-TYPE,valid_values,error,Yes,Record type must be valid,HDR|DET|TRL
+```
+
+**WRONG — descriptions are NOT valid values:**
+```
+R007,disputed_amt_valid,DISPUTED-AMT,valid_values,error,Yes,Must be valid,Must be less than or equal to BALANCE-AMT   ← WRONG: this is a cross_field condition
+R008,cycle_id_valid,CYCLE-ID,valid_values,error,Yes,Must be valid,Cycle ID = 00 is used for Manual Account Setup   ← WRONG: this is a description
+R009,aged_history_valid,AGED-HISTORY,valid_values,error,Yes,Must be valid,Each digit represents a month              ← WRONG: this is a description
+```
+
+**How to decide:**
+- If the text contains ONLY short codes/numbers separated by `|` or `,` → use `valid_values` with the codes
+- If the text references another field → use `cross_field` type instead
+- If the text is a sentence explaining what the field does → **skip it** (no rule needed)
+- If the text says "see table" or "Bank Control Table" → **skip it** (can't validate without the table)
+- Strip all trailing/leading spaces from each valid value
 
 ### Example
 
