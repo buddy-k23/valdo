@@ -12,10 +12,21 @@ Recognises patterns found in real Shaw→C360 mapping spreadsheets:
 - ``FIELD1 + FIELD2 + FIELD3`` (concatenation)
 - ``LPAD(FIELD,N) + FIELD2`` (left-padded concatenation)
 - ``FIELD_NAME`` (bare uppercase identifier — direct field map)
+- ``IF <cond> THEN <branch> [ELSE <branch>]`` (conditional, Phase 3d)
 
-Anything else — including complex conditional expressions — returns a noop
-``Transform`` so that downstream code can safely fall back to a direct
-source-field copy.
+Conditional conditions supported:
+
+- ``IF FIELD not null THEN ...`` → :class:`NullCheckCondition` (negate=True)
+- ``IF FIELD IS NULL THEN ...`` → :class:`NullCheckCondition` (negate=False)
+- ``IF FIELD IS NOT NULL THEN ...`` → :class:`NullCheckCondition` (negate=True)
+- ``IF FIELD = 'VALUE' THEN ...`` → :class:`EqualityCondition`
+- ``IF FIELD != 'VALUE' THEN ...`` / ``<>`` → :class:`EqualityCondition` (negate=True)
+- ``IF FIELD = '7' or '8' THEN ...`` → :class:`InCondition`
+- ``IF FIELD IN ('A','B') THEN ...`` → :class:`InCondition`
+
+Anything else — including complex conditional expressions not matching these
+patterns — returns a noop ``Transform`` so that downstream code can safely
+fall back to a direct source-field copy.
 """
 
 from __future__ import annotations
@@ -27,9 +38,13 @@ from src.transforms.models import (
     BlankTransform,
     ConcatPart,
     ConcatTransform,
+    ConditionalTransform,
     ConstantTransform,
     DefaultTransform,
+    EqualityCondition,
     FieldMapTransform,
+    InCondition,
+    NullCheckCondition,
     Transform,
 )
 
@@ -110,6 +125,181 @@ _CONCAT_EXPR_RE = re.compile(
 # that look like constants.
 _FIELD_MAP_RE = re.compile(r"^[A-Z][A-Z0-9_\-]+$")
 
+# ---------------------------------------------------------------------------
+# Phase 3d: conditional IF/THEN/ELSE patterns
+# ---------------------------------------------------------------------------
+
+# Top-level IF...THEN...ELSE structure.  The ELSE clause is optional.
+# Uses non-greedy matching on the condition so THEN is found correctly.
+# Does NOT match if a semicolon separates THEN/ELSE (unsupported syntax).
+_IF_THEN_ELSE_RE = re.compile(
+    r"^IF\s+(.+?)\s+THEN\s+(.+?)(?:\s+ELSE\s+(.+))?$",
+    re.IGNORECASE,
+)
+
+# Condition: FIELD not null  (case-insensitive)
+_COND_NOT_NULL_RE = re.compile(
+    r"^([A-Z][A-Z0-9_\-]*)\s+not\s+null$",
+    re.IGNORECASE,
+)
+
+# Condition: FIELD IS NULL / FIELD IS NOT NULL
+_COND_IS_NULL_RE = re.compile(
+    r"^([A-Z][A-Z0-9_\-]*)\s+IS\s+(NOT\s+)?NULL$",
+    re.IGNORECASE,
+)
+
+# Condition: FIELD IN ('A', 'B', ...) — explicit IN list
+_COND_IN_LIST_RE = re.compile(
+    r"^([A-Z][A-Z0-9_\-]*)\s+IN\s*\((.+)\)$",
+    re.IGNORECASE,
+)
+
+# Condition: FIELD = 'VALUE' or 'VALUE2' ...  (or-sugar → InCondition)
+_COND_EQ_OR_RE = re.compile(
+    r"^([A-Z][A-Z0-9_\-]*)\s*=\s*['\"]([^'\"]+)['\"]\s+or\s+['\"]([^'\"]+)['\"]",
+    re.IGNORECASE,
+)
+
+# Condition: FIELD = 'VALUE' / FIELD != 'VALUE' / FIELD <> 'VALUE'
+_COND_EQ_RE = re.compile(
+    r"^([A-Z][A-Z0-9_\-]*)\s*(!=|<>|=)\s*['\"]([^'\"]+)['\"]$",
+    re.IGNORECASE,
+)
+
+# A quoted literal in a branch position: 'VALUE' or "VALUE"
+_QUOTED_VALUE_RE = re.compile(r"^['\"]([^'\"]+)['\"]$")
+
+# A bare uppercase field name used as a branch (direct field reference)
+_BRANCH_FIELD_RE = re.compile(r"^[A-Z][A-Z0-9_\-]+$")
+
+
+def _parse_condition(
+    condition_text: str,
+) -> "Optional[NullCheckCondition | EqualityCondition | InCondition]":
+    """Parse a condition fragment from an IF expression.
+
+    Args:
+        condition_text: The text between ``IF`` and ``THEN``, stripped.
+
+    Returns:
+        A condition object (:class:`NullCheckCondition`, :class:`EqualityCondition`,
+        or :class:`InCondition`), or ``None`` if the text is unrecognised.
+    """
+    t = condition_text.strip()
+
+    # "FIELD not null"
+    m = _COND_NOT_NULL_RE.match(t)
+    if m:
+        return NullCheckCondition(field=m.group(1).upper(), negate=True)
+
+    # "FIELD IS NULL" / "FIELD IS NOT NULL"
+    m = _COND_IS_NULL_RE.match(t)
+    if m:
+        negate = m.group(2) is not None  # group(2) is "NOT " when present
+        return NullCheckCondition(field=m.group(1).upper(), negate=negate)
+
+    # "FIELD IN ('A', 'B', 'C')"
+    m = _COND_IN_LIST_RE.match(t)
+    if m:
+        field_name = m.group(1).upper()
+        raw_list = m.group(2)
+        values = [v.strip().strip("'\"") for v in raw_list.split(",") if v.strip()]
+        return InCondition(field=field_name, values=values)
+
+    # "FIELD = 'V1' or 'V2'" (or-sugar syntax → InCondition)
+    m = _COND_EQ_OR_RE.match(t)
+    if m:
+        field_name = m.group(1).upper()
+        values = [m.group(2), m.group(3)]
+        return InCondition(field=field_name, values=values)
+
+    # "FIELD = 'VALUE'" / "FIELD != 'VALUE'" / "FIELD <> 'VALUE'"
+    m = _COND_EQ_RE.match(t)
+    if m:
+        field_name = m.group(1).upper()
+        operator = m.group(2)
+        value = m.group(3)
+        negate = operator in ("!=", "<>")
+        return EqualityCondition(field=field_name, value=value, negate=negate)
+
+    return None
+
+
+def _parse_branch(branch_text: str) -> Transform:
+    """Parse a THEN or ELSE branch fragment into a Transform.
+
+    A branch can be:
+
+    - A quoted literal ``'VALUE'`` → :class:`ConstantTransform`
+    - A bare UPPERCASE field name → :class:`FieldMapTransform`
+    - Any other text is delegated to :func:`parse_transform` recursively
+      (handles ``Default to``, ``Leave Blank``, etc.)
+
+    Args:
+        branch_text: The raw branch fragment, stripped.
+
+    Returns:
+        A ``Transform`` subclass matching the branch content.
+    """
+    t = branch_text.strip()
+
+    # Quoted literal → ConstantTransform
+    m = _QUOTED_VALUE_RE.match(t)
+    if m:
+        return ConstantTransform(value=m.group(1))
+
+    # Bare uppercase field name → FieldMapTransform
+    if _BRANCH_FIELD_RE.match(t):
+        return FieldMapTransform(source_field=t.upper())
+
+    # Delegate to parse_transform for known patterns (Default to, Leave Blank, etc.)
+    return parse_transform(t)
+
+
+def _parse_conditional(text: str) -> "Optional[ConditionalTransform]":
+    """Attempt to parse an IF/THEN/ELSE expression from *text*.
+
+    Recognises::
+
+        IF <condition> THEN <branch> [ELSE <branch>]
+
+    Keywords (IF, THEN, ELSE) are case-insensitive.  The ELSE clause is
+    optional; when absent the else branch defaults to a noop transform.
+    Semicolons in the text prevent matching (unsupported syntax).
+
+    Args:
+        text: Full transformation text, stripped.
+
+    Returns:
+        A :class:`ConditionalTransform` when successfully parsed, or ``None``
+        when the text does not match the expected IF/THEN/ELSE structure.
+    """
+    # Reject semicolon-separated syntax which we do not support.
+    if ";" in text:
+        return None
+
+    m = _IF_THEN_ELSE_RE.match(text)
+    if not m:
+        return None
+
+    condition_text = m.group(1).strip()
+    then_text = m.group(2).strip()
+    else_text = m.group(3).strip() if m.group(3) else None
+
+    condition = _parse_condition(condition_text)
+    if condition is None:
+        return None
+
+    then_transform = _parse_branch(then_text)
+    else_transform = _parse_branch(else_text) if else_text is not None else Transform(type="noop")
+
+    return ConditionalTransform(
+        condition=condition,
+        then_transform=then_transform,
+        else_transform=else_transform,
+    )
+
 
 def _parse_concat_part(token: str) -> ConcatPart:
     """Parse a single token into a :class:`ConcatPart`.
@@ -158,6 +348,12 @@ def parse_transform(text: Optional[str]) -> Transform:
         return Transform(type="noop")
 
     t = text.strip()
+
+    # --- Phase 3d: conditional IF/THEN/ELSE (check first, before all others) ---
+
+    conditional = _parse_conditional(t)
+    if conditional is not None:
+        return conditional
 
     # --- Blank / space patterns (check before generic "pass" pattern) ---
 

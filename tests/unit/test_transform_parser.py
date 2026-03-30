@@ -2,7 +2,8 @@
 
 Tests cover all recognized patterns from real mapping CSVs:
   Default to, Nullable -->, Pass, Hard-code, Hard-Code,
-  Initialize to spaces, Leave Blank, and unknown/empty inputs.
+  Initialize to spaces, Leave Blank, unknown/empty inputs,
+  and conditional IF/THEN/ELSE expressions.
 """
 
 import pytest
@@ -12,7 +13,11 @@ from src.transforms.models import (
     BlankTransform,
     ConstantTransform,
     ConcatTransform,
+    ConditionalTransform,
+    EqualityCondition,
     FieldMapTransform,
+    InCondition,
+    NullCheckCondition,
 )
 
 
@@ -171,8 +176,8 @@ class TestNoopTransform:
         result = parse_transform(None)
         assert result.type == "noop"
 
-    def test_complex_conditional(self):
-        """Conditional logic we cannot pattern-match → noop."""
+    def test_complex_conditional_semicolon_syntax_is_noop(self):
+        """Semicolon-separated syntax we don't support → noop."""
         result = parse_transform(
             "IF LN-BAL not null then LN-BAL; ELSE Default to +000000000000000000"
         )
@@ -270,3 +275,169 @@ class TestFieldMapTransformParser:
         result = parse_transform("LOAN_NUM")
         assert isinstance(result, FieldMapTransform)
         assert not isinstance(result, ConcatTransform)
+
+
+# ---------------------------------------------------------------------------
+# ConditionalTransform patterns (Phase 3d)
+# ---------------------------------------------------------------------------
+
+
+class TestConditionalTransformParser:
+    """Tests for IF/THEN/ELSE parsing → ConditionalTransform objects."""
+
+    # --- Null-check conditions ---
+
+    def test_not_null_then_field_else_default(self):
+        """IF FIELD not null THEN FIELD ELSE Default to '000'"""
+        result = parse_transform("IF FIELD not null THEN FIELD ELSE Default to '000'")
+        assert isinstance(result, ConditionalTransform)
+        cond = result.condition
+        assert isinstance(cond, NullCheckCondition)
+        assert cond.field == "FIELD"
+        assert cond.negate is True  # "not null" → IS NOT NULL
+        assert isinstance(result.then_transform, FieldMapTransform)
+        assert result.then_transform.source_field == "FIELD"
+        assert isinstance(result.else_transform, DefaultTransform)
+        assert result.else_transform.value == "000"
+
+    def test_is_null_then_leave_blank_else_field(self):
+        """IF STATUS IS NULL THEN Leave Blank ELSE STATUS"""
+        result = parse_transform("IF STATUS IS NULL THEN Leave Blank ELSE STATUS")
+        assert isinstance(result, ConditionalTransform)
+        cond = result.condition
+        assert isinstance(cond, NullCheckCondition)
+        assert cond.field == "STATUS"
+        assert cond.negate is False  # IS NULL → negate=False
+        assert isinstance(result.then_transform, BlankTransform)
+        assert isinstance(result.else_transform, FieldMapTransform)
+        assert result.else_transform.source_field == "STATUS"
+
+    def test_is_not_null_condition(self):
+        """IF FIELD IS NOT NULL THEN FIELD ELSE '00000'"""
+        result = parse_transform("IF FIELD IS NOT NULL THEN FIELD ELSE '00000'")
+        assert isinstance(result, ConditionalTransform)
+        cond = result.condition
+        assert isinstance(cond, NullCheckCondition)
+        assert cond.negate is True  # IS NOT NULL → negate=True
+
+    # --- Equality conditions ---
+
+    def test_equality_then_constant_else_constant(self):
+        """IF CODE = 'A' THEN 'X' ELSE 'Y'"""
+        result = parse_transform("IF CODE = 'A' THEN 'X' ELSE 'Y'")
+        assert isinstance(result, ConditionalTransform)
+        cond = result.condition
+        assert isinstance(cond, EqualityCondition)
+        assert cond.field == "CODE"
+        assert cond.value == "A"
+        assert cond.negate is False
+        assert isinstance(result.then_transform, ConstantTransform)
+        assert result.then_transform.value == "X"
+        assert isinstance(result.else_transform, ConstantTransform)
+        assert result.else_transform.value == "Y"
+
+    def test_equality_not_equal_operator(self):
+        """IF CODE != 'X' THEN 'YES' ELSE 'NO'"""
+        result = parse_transform("IF CODE != 'X' THEN 'YES' ELSE 'NO'")
+        assert isinstance(result, ConditionalTransform)
+        cond = result.condition
+        assert isinstance(cond, EqualityCondition)
+        assert cond.field == "CODE"
+        assert cond.value == "X"
+        assert cond.negate is True
+
+    def test_equality_not_equal_diamond_operator(self):
+        """IF CODE <> 'X' THEN 'YES' ELSE 'NO'"""
+        result = parse_transform("IF CODE <> 'X' THEN 'YES' ELSE 'NO'")
+        assert isinstance(result, ConditionalTransform)
+        cond = result.condition
+        assert isinstance(cond, EqualityCondition)
+        assert cond.negate is True
+
+    def test_equality_then_leave_blank(self):
+        """IF CHG-OFF-CD = '1' THEN M-DATE-PAID-OFF ELSE Leave Blank"""
+        result = parse_transform(
+            "IF CHG-OFF-CD = '1' THEN M-DATE-PAID-OFF ELSE Leave Blank"
+        )
+        assert isinstance(result, ConditionalTransform)
+        assert isinstance(result.then_transform, FieldMapTransform)
+        assert result.then_transform.source_field == "M-DATE-PAID-OFF"
+        assert isinstance(result.else_transform, BlankTransform)
+
+    # --- IN conditions ---
+
+    def test_or_sugar_becomes_in_condition(self):
+        """IF TYPE = '7' or '8' THEN 'C' ELSE 'I' → InCondition"""
+        result = parse_transform("IF TYPE = '7' or '8' THEN 'C' ELSE 'I'")
+        assert isinstance(result, ConditionalTransform)
+        cond = result.condition
+        assert isinstance(cond, InCondition)
+        assert cond.field == "TYPE"
+        assert set(cond.values) == {"7", "8"}
+        assert isinstance(result.then_transform, ConstantTransform)
+        assert result.then_transform.value == "C"
+        assert isinstance(result.else_transform, ConstantTransform)
+        assert result.else_transform.value == "I"
+
+    def test_explicit_in_list(self):
+        """IF FIELD IN ('A','B','C') THEN 'KNOWN' ELSE 'OTHER'"""
+        result = parse_transform("IF FIELD IN ('A','B','C') THEN 'KNOWN' ELSE 'OTHER'")
+        assert isinstance(result, ConditionalTransform)
+        cond = result.condition
+        assert isinstance(cond, InCondition)
+        assert cond.field == "FIELD"
+        assert set(cond.values) == {"A", "B", "C"}
+        assert isinstance(result.then_transform, ConstantTransform)
+        assert result.then_transform.value == "KNOWN"
+
+    # --- ELSE clause optional ---
+
+    def test_no_else_clause_defaults_to_noop(self):
+        """IF CODE = 'A' THEN 'X' (no ELSE) → else_transform is noop"""
+        result = parse_transform("IF CODE = 'A' THEN 'X'")
+        assert isinstance(result, ConditionalTransform)
+        assert result.else_transform.type == "noop"
+        assert type(result.else_transform) is Transform
+
+    # --- Case-insensitive keywords ---
+
+    def test_lowercase_if_then_else(self):
+        """if CODE = 'A' then 'X' else 'Y' (lowercase keywords)"""
+        result = parse_transform("if CODE = 'A' then 'X' else 'Y'")
+        assert isinstance(result, ConditionalTransform)
+        assert isinstance(result.condition, EqualityCondition)
+        assert result.condition.field == "CODE"
+
+    def test_mixed_case_keywords(self):
+        """If CODE = 'A' Then 'X' Else 'Y' (mixed case)"""
+        result = parse_transform("If CODE = 'A' Then 'X' Else 'Y'")
+        assert isinstance(result, ConditionalTransform)
+
+    # --- Existing patterns still pass (regression) ---
+
+    def test_unrecognised_text_still_noop(self):
+        """Random text not matching IF pattern → noop."""
+        result = parse_transform("Use the source value when available")
+        assert result.type == "noop"
+
+    def test_semicolon_syntax_still_noop(self):
+        """Semicolon-separated IF; ELSE syntax is unsupported → noop."""
+        result = parse_transform(
+            "IF LN-BAL not null then LN-BAL; ELSE Default to +000000000000000000"
+        )
+        assert result.type == "noop"
+
+    # --- Real-world patterns from mapping CSVs ---
+
+    def test_real_world_ln_bal_not_null(self):
+        """IF LN_BAL not null THEN LN_BAL ELSE Default to +000000000000000000"""
+        result = parse_transform(
+            "IF LN_BAL not null THEN LN_BAL ELSE Default to +000000000000000000"
+        )
+        assert isinstance(result, ConditionalTransform)
+        assert isinstance(result.condition, NullCheckCondition)
+        assert result.condition.field == "LN_BAL"
+        assert result.condition.negate is True
+        assert isinstance(result.then_transform, FieldMapTransform)
+        assert isinstance(result.else_transform, DefaultTransform)
+        assert result.else_transform.value == "+000000000000000000"
