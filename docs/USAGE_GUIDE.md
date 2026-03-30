@@ -2049,6 +2049,9 @@ Recognised patterns include:
 - `Initialize to spaces`
 - `Pass 'VALUE'`
 - `Hard-code to 'VALUE'` / `Hard-Code to 'VALUE'` / `Hardcode to 'VALUE'`
+- `Convert to CCYYMMDD` / `Convert to YYYYMMDD` → ISO date (`YYYY-MM-DD`) to `YYYYMMDD`
+- `Convert to MM/DD/CCYY` → ISO date to `MM/DD/YYYY`
+- `Date format CCYYMMDD` / `Format as CCYYMMDD` → same as above
 
 Any unrecognised text (including complex conditional expressions) returns
 `Transform(type='noop')` so callers can safely fall back to a direct copy.
@@ -2088,6 +2091,7 @@ apply_transform("ABCDEF", parse_transform("Pass as is"), field_length=4)
 | Symbol | Module |
 |--------|--------|
 | `Transform`, `DefaultTransform`, `BlankTransform`, `ConstantTransform` | `src.transforms.models` |
+| `DateFormatTransform` | `src.transforms.models` |
 | `parse_transform` | `src.transforms.transform_parser` |
 | `apply_transform` | `src.transforms.transform_engine` |
 | All of the above (re-exported) | `src.transforms` |

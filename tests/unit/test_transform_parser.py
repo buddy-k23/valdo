@@ -494,3 +494,72 @@ class TestSequentialTransformParser:
         result = parse_transform("sequence")
         assert isinstance(result, SequentialNumberTransform)
         assert result.type == "sequential"
+
+
+# ---------------------------------------------------------------------------
+# DateFormatTransform parser patterns
+# ---------------------------------------------------------------------------
+
+
+class TestDateFormatTransformParser:
+    """Parser recognises date-format conversion patterns."""
+
+    def test_convert_to_ccyymmdd(self):
+        """'Convert to CCYYMMDD' parses to DateFormatTransform with CCYYMMDD output."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("Convert to CCYYMMDD")
+        assert isinstance(result, DateFormatTransform)
+        assert result.input_format == "%Y-%m-%d"
+        assert result.output_format == "%Y%m%d"
+        assert result.type == "date_format"
+
+    def test_convert_to_yyyymmdd(self):
+        """'Convert to YYYYMMDD' parses to DateFormatTransform with CCYYMMDD output."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("Convert to YYYYMMDD")
+        assert isinstance(result, DateFormatTransform)
+        assert result.input_format == "%Y-%m-%d"
+        assert result.output_format == "%Y%m%d"
+
+    def test_format_as_ccyymmdd(self):
+        """'Format as CCYYMMDD' parses to DateFormatTransform."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("Format as CCYYMMDD")
+        assert isinstance(result, DateFormatTransform)
+        assert result.input_format == "%Y-%m-%d"
+        assert result.output_format == "%Y%m%d"
+
+    def test_convert_to_ccyymmdd_case_insensitive(self):
+        """Parser handles mixed case: 'convert to ccyymmdd'."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("convert to ccyymmdd")
+        assert isinstance(result, DateFormatTransform)
+        assert result.output_format == "%Y%m%d"
+
+    def test_date_format_ccyymmdd(self):
+        """'Date format CCYYMMDD' parses to DateFormatTransform."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("Date format CCYYMMDD")
+        assert isinstance(result, DateFormatTransform)
+        assert result.input_format == "%Y-%m-%d"
+        assert result.output_format == "%Y%m%d"
+
+    def test_convert_to_mm_dd_ccyy(self):
+        """'Convert to MM/DD/CCYY' parses to DateFormatTransform with MM/DD/YYYY output."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("Convert to MM/DD/CCYY")
+        assert isinstance(result, DateFormatTransform)
+        assert result.input_format == "%Y-%m-%d"
+        assert result.output_format == "%m/%d/%Y"
+
+    def test_unrelated_text_not_date_format(self):
+        """Non-matching text does not produce DateFormatTransform."""
+        result = parse_transform("Default to '20250101'")
+        from src.transforms.models import DateFormatTransform
+        assert not isinstance(result, DateFormatTransform)

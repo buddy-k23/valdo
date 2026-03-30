@@ -6,7 +6,8 @@ field values.  Phase 3a adds condition models and an evaluator; Phase 3b
 extends conditions with equality and multi-value (IN) checks.  Phase 3c
 adds ``ConditionalTransform`` for IF/ELSE dispatch.  Phase 3e adds
 ``SequentialNumberTransform`` and ``SequentialCounter`` for stateful
-row-counter tracking.
+row-counter tracking.  Phase 4a adds ``DateFormatTransform`` for date
+string reformatting.
 
 Exported names
 --------------
@@ -24,6 +25,8 @@ Exported names
     Concatenate multiple source fields, with optional per-field left-padding.
 ``FieldMapTransform``
     Map a named source field directly to the target field.
+``DateFormatTransform``
+    Convert a date string from one strptime format to another strftime format.
 ``NullCheckCondition``
     Condition that tests whether a named field is null/blank (or IS NOT NULL
     when ``negate=True``).
@@ -54,6 +57,7 @@ from src.transforms.models import (
     ConcatTransform,
     ConditionalTransform,
     ConstantTransform,
+    DateFormatTransform,
     DefaultTransform,
     EqualityCondition,
     FieldMapTransform,
@@ -74,6 +78,7 @@ __all__ = [
     "ConcatPart",
     "ConcatTransform",
     "FieldMapTransform",
+    "DateFormatTransform",
     "NullCheckCondition",
     "EqualityCondition",
     "InCondition",

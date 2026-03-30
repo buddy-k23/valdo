@@ -252,6 +252,38 @@ class SequentialNumberTransform(Transform):
 
 
 @dataclass
+class DateFormatTransform(Transform):
+    """Convert a date string from one strptime format to another strftime format.
+
+    When the source value is absent (``None``, empty, or whitespace-only) or
+    cannot be parsed with *input_format*, *default_value* is returned instead.
+
+    Attributes:
+        input_format: :func:`datetime.strptime` format string for parsing the
+            source value.  E.g. ``"%Y-%m-%d"``.
+        output_format: :func:`datetime.strftime` format string for rendering
+            the converted date.  E.g. ``"%Y%m%d"``.
+        default_value: Value to return when the source is absent or
+            unparseable.  Defaults to ``""`` (empty string).
+        type: Always ``'date_format'``.
+
+    Example::
+
+        t = DateFormatTransform(input_format="%Y-%m-%d", output_format="%Y%m%d")
+        apply_transform("2025-06-15", t)  # -> "20250615"
+        apply_transform(None, t)          # -> ""
+    """
+
+    input_format: str = ""
+    output_format: str = ""
+    default_value: str = ""
+    type: str = field(default="date_format", init=False)
+
+    def __post_init__(self) -> None:
+        self.type = "date_format"
+
+
+@dataclass
 class ConditionalTransform(Transform):
     """Apply one of two transforms depending on whether a condition holds.
 

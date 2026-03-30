@@ -17,6 +17,7 @@ When ``field_length`` is zero or negative, no padding or truncation is applied.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from src.transforms.condition_evaluator import evaluate_condition
@@ -25,6 +26,7 @@ from src.transforms.models import (
     ConcatTransform,
     ConditionalTransform,
     ConstantTransform,
+    DateFormatTransform,
     DefaultTransform,
     FieldMapTransform,
     SequentialNumberTransform,
@@ -162,6 +164,16 @@ def apply_transform(
             if transform.pad_length is not None:
                 raw = raw.zfill(transform.pad_length)
             result = raw
+
+    elif isinstance(transform, DateFormatTransform):
+        if _is_absent(raw_source):
+            result = transform.default_value
+        else:
+            try:
+                parsed_dt = datetime.strptime(raw_source.strip(), transform.input_format)
+                result = parsed_dt.strftime(transform.output_format)
+            except ValueError:
+                result = transform.default_value
 
     elif isinstance(transform, ConditionalTransform):
         branch = (

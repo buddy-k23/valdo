@@ -13,6 +13,9 @@ Recognises patterns found in real Shaw→C360 mapping spreadsheets:
 - ``LPAD(FIELD,N) + FIELD2`` (left-padded concatenation)
 - ``FIELD_NAME`` (bare uppercase identifier — direct field map)
 - ``IF <cond> THEN <branch> [ELSE <branch>]`` (conditional, Phase 3d)
+- ``Convert to CCYYMMDD`` / ``Convert to YYYYMMDD`` (date format, Phase 4a)
+- ``Convert to MM/DD/CCYY`` (date format, Phase 4a)
+- ``Date format CCYYMMDD`` / ``Format as CCYYMMDD`` (date format, Phase 4a)
 
 Conditional conditions supported:
 
@@ -40,6 +43,7 @@ from src.transforms.models import (
     ConcatTransform,
     ConditionalTransform,
     ConstantTransform,
+    DateFormatTransform,
     DefaultTransform,
     EqualityCondition,
     FieldMapTransform,
@@ -133,6 +137,26 @@ _FIELD_MAP_RE = re.compile(r"^[A-Z][A-Z0-9_\-]+$")
 # Matches: "Sequential", "sequential number", "sequence" (case-insensitive)
 _SEQUENTIAL_RE = re.compile(
     r"^(?:sequential(?:\s+number)?|sequence)$",
+    re.IGNORECASE,
+)
+
+# ---------------------------------------------------------------------------
+# Phase 4a: date format conversion patterns
+# ---------------------------------------------------------------------------
+
+# Maps a date-format token to (input_format, output_format) tuples.
+# Ordered for lookup — CCYYMMDD and YYYYMMDD map to the same output format.
+_DATE_FORMAT_MAP = {
+    "CCYYMMDD": ("%Y-%m-%d", "%Y%m%d"),
+    "YYYYMMDD": ("%Y-%m-%d", "%Y%m%d"),
+    "MM/DD/CCYY": ("%Y-%m-%d", "%m/%d/%Y"),
+    "MM/DD/YYYY": ("%Y-%m-%d", "%m/%d/%Y"),
+}
+
+# "Convert to CCYYMMDD" / "Convert to YYYYMMDD" / "Convert to MM/DD/CCYY"
+# "Date format CCYYMMDD" / "Format as CCYYMMDD"
+_DATE_FORMAT_RE = re.compile(
+    r"^(?:convert\s+to|date\s+format|format\s+as)\s+(\S+)$",
     re.IGNORECASE,
 )
 
@@ -370,6 +394,15 @@ def parse_transform(text: Optional[str]) -> Transform:
 
     if _SEQUENTIAL_RE.match(t):
         return SequentialNumberTransform()
+
+    # --- Phase 4a: date format conversion ---
+
+    m = _DATE_FORMAT_RE.match(t)
+    if m:
+        token = m.group(1).upper()
+        if token in _DATE_FORMAT_MAP:
+            input_fmt, output_fmt = _DATE_FORMAT_MAP[token]
+            return DateFormatTransform(input_format=input_fmt, output_format=output_fmt)
 
     # --- Blank / space patterns (check before generic "pass" pattern) ---
 

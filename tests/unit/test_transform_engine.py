@@ -528,3 +528,113 @@ class TestSequentialTransformEngine:
         t = SequentialNumberTransform(start=1, pad_length=5)
         assert _apply(None, t, counter=counter) == "00001"
         assert _apply(None, t, counter=counter) == "00002"
+
+
+# ---------------------------------------------------------------------------
+# DateFormatTransform
+# ---------------------------------------------------------------------------
+
+
+class TestDateFormatTransformEngine:
+    """DateFormatTransform converts a date string from one format to another."""
+
+    def test_iso_date_to_ccyymmdd(self):
+        """ISO date '2025-06-15' with %Y-%m-%d input and %Y%m%d output -> '20250615'."""
+        from src.transforms.models import DateFormatTransform
+        from src.transforms.transform_engine import apply_transform as _apply
+
+        t = DateFormatTransform(
+            input_format="%Y-%m-%d",
+            output_format="%Y%m%d",
+        )
+        result = _apply("2025-06-15", t)
+        assert result == "20250615"
+
+    def test_absent_source_returns_default_value(self):
+        """When source_value is None, default_value is returned."""
+        from src.transforms.models import DateFormatTransform
+        from src.transforms.transform_engine import apply_transform as _apply
+
+        t = DateFormatTransform(
+            input_format="%Y-%m-%d",
+            output_format="%Y%m%d",
+            default_value="00000000",
+        )
+        result = _apply(None, t)
+        assert result == "00000000"
+
+    def test_blank_source_returns_default_value(self):
+        """When source_value is blank/whitespace, default_value is returned."""
+        from src.transforms.models import DateFormatTransform
+        from src.transforms.transform_engine import apply_transform as _apply
+
+        t = DateFormatTransform(
+            input_format="%Y-%m-%d",
+            output_format="%Y%m%d",
+            default_value="00000000",
+        )
+        result = _apply("   ", t)
+        assert result == "00000000"
+
+    def test_empty_source_returns_default_value(self):
+        """When source_value is empty string, default_value is returned."""
+        from src.transforms.models import DateFormatTransform
+        from src.transforms.transform_engine import apply_transform as _apply
+
+        t = DateFormatTransform(
+            input_format="%Y-%m-%d",
+            output_format="%Y%m%d",
+            default_value="00000000",
+        )
+        result = _apply("", t)
+        assert result == "00000000"
+
+    def test_unparseable_source_returns_default_value(self):
+        """When source_value does not match input_format, default_value is returned."""
+        from src.transforms.models import DateFormatTransform
+        from src.transforms.transform_engine import apply_transform as _apply
+
+        t = DateFormatTransform(
+            input_format="%Y-%m-%d",
+            output_format="%Y%m%d",
+            default_value="INVALID",
+        )
+        result = _apply("not-a-date", t)
+        assert result == "INVALID"
+
+    def test_field_length_padding_applied(self):
+        """Converted date is padded to field_length when shorter."""
+        from src.transforms.models import DateFormatTransform
+        from src.transforms.transform_engine import apply_transform as _apply
+
+        t = DateFormatTransform(
+            input_format="%Y-%m-%d",
+            output_format="%Y%m%d",
+        )
+        result = _apply("2025-06-15", t, field_length=10)
+        assert result == "20250615  "
+        assert len(result) == 10
+
+    def test_mm_dd_ccyy_output_format(self):
+        """ISO date can be reformatted to MM/DD/CCYY."""
+        from src.transforms.models import DateFormatTransform
+        from src.transforms.transform_engine import apply_transform as _apply
+
+        t = DateFormatTransform(
+            input_format="%Y-%m-%d",
+            output_format="%m/%d/%Y",
+        )
+        result = _apply("2025-06-15", t)
+        assert result == "06/15/2025"
+
+    def test_default_value_empty_when_not_set(self):
+        """When no default_value is configured and source is absent, empty string returned."""
+        from src.transforms.models import DateFormatTransform
+        from src.transforms.transform_engine import apply_transform as _apply
+
+        t = DateFormatTransform(
+            input_format="%Y-%m-%d",
+            output_format="%Y%m%d",
+        )
+        result = _apply(None, t)
+        assert result == ""
