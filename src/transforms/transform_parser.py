@@ -155,11 +155,26 @@ _DATE_FORMAT_MAP = {
     "YYYYMMDD": ("%Y-%m-%d", "%Y%m%d"),
     "MM/DD/CCYY": ("%Y-%m-%d", "%m/%d/%Y"),
     "MM/DD/YYYY": ("%Y-%m-%d", "%m/%d/%Y"),
+    # Phase 4e: reverse direction — MMDDYYYY input to CCYYMMDD output
+    "MMDDCCYY": ("%m%d%Y", "%Y%m%d"),
+    "MMDDYYYY": ("%m%d%Y", "%Y%m%d"),
 }
 
 # "Convert to CCYYMMDD" / "Date format CCYYMMDD" / "Format as CCYYMMDD"
 _DATE_FORMAT_RE = re.compile(
     r"^(?:convert\s+to|date\s+format|format\s+as)\s+(\S+)$",
+    re.IGNORECASE,
+)
+
+# Phase 4e: "Reformat date to TOKEN" / "Convert date TOKEN"
+_DATE_FORMAT_ALT_RE = re.compile(
+    r"^(?:reformat\s+date\s+to|convert\s+date)\s+(\S+)$",
+    re.IGNORECASE,
+)
+
+# Phase 4e: "TOKEN format" (e.g. "CCYYMMDD format")
+_DATE_FORMAT_TOKEN_RE = re.compile(
+    r"^(\S+)\s+format$",
     re.IGNORECASE,
 )
 
@@ -185,6 +200,15 @@ _ZERO_PAD_RE = re.compile(r"^zero-?pad\s+to\s+(\d+)$", re.IGNORECASE)
 # "Pad to N digits"
 _PAD_TO_DIGITS_RE = re.compile(r"^pad\s+to\s+(\d+)\s+digits$", re.IGNORECASE)
 
+# Phase 4e: "N-digit zero-filled" / "N-digit zero-fill"
+_N_DIGIT_ZERO_FILL_RE = re.compile(r"^(\d+)-digit\s+zero-?fill(?:ed)?$", re.IGNORECASE)
+
+# Phase 4e: "Zero-fill to N positions"
+_ZERO_FILL_POSITIONS_RE = re.compile(r"^zero-?fill\s+to\s+(\d+)\s+positions?$", re.IGNORECASE)
+
+# Phase 4e: "Signed N-digit"
+_SIGNED_N_DIGIT_RE = re.compile(r"^signed\s+(\d+)-digit$", re.IGNORECASE)
+
 # ---------------------------------------------------------------------------
 # Phase 4c: scale (multiply/divide) patterns
 # ---------------------------------------------------------------------------
@@ -200,6 +224,15 @@ _DIVIDE_RE = re.compile(
     r"^divide\s+by\s+(\d+(?:\.\d+)?)$",
     re.IGNORECASE,
 )
+
+# Phase 4e: "Scale by N" / "Times by N"
+_SCALE_BY_RE = re.compile(r"^(?:scale|times)\s+by\s+(\d+(?:\.\d+)?)$", re.IGNORECASE)
+
+# Phase 4e: "Times N"
+_TIMES_N_RE = re.compile(r"^times\s+(\d+(?:\.\d+)?)$", re.IGNORECASE)
+
+# Phase 4e: "Divide result by N"
+_DIVIDE_RESULT_RE = re.compile(r"^divide\s+result\s+by\s+(\d+(?:\.\d+)?)$", re.IGNORECASE)
 
 # ---------------------------------------------------------------------------
 # Phase 4d: pad and truncate patterns
@@ -234,6 +267,15 @@ _TRUNCATE_DECIMAL_RE = re.compile(
     r"^truncate\s+decimal\s+places?$",
     re.IGNORECASE,
 )
+
+# Phase 4e: "Space-pad to N"
+_SPACE_PAD_RE = re.compile(r"^space-?pad\s+to\s+(\d+)$", re.IGNORECASE)
+
+# Phase 4e: "Zero-fill left to N"
+_ZERO_FILL_LEFT_RE = re.compile(r"^zero-?fill\s+left\s+to\s+(\d+)$", re.IGNORECASE)
+
+# Phase 4e: "Pad left N zeros"
+_PAD_LEFT_ZEROS_RE = re.compile(r"^pad\s+left\s+(\d+)\s+zeros?$", re.IGNORECASE)
 
 # ---------------------------------------------------------------------------
 # Phase 3d: conditional IF/THEN/ELSE patterns
@@ -489,6 +531,20 @@ def parse_transform(text: Optional[str]) -> Transform:
     if m:
         return NumericFormatTransform(length=int(m.group(1)), signed=False)
 
+    # --- Phase 4e: extended numeric format patterns ---
+
+    m = _N_DIGIT_ZERO_FILL_RE.match(t)
+    if m:
+        return NumericFormatTransform(length=int(m.group(1)), signed=False)
+
+    m = _ZERO_FILL_POSITIONS_RE.match(t)
+    if m:
+        return NumericFormatTransform(length=int(m.group(1)), signed=False)
+
+    m = _SIGNED_N_DIGIT_RE.match(t)
+    if m:
+        return NumericFormatTransform(length=int(m.group(1)), signed=True)
+
     # --- Phase 3e: sequential numbering ---
 
     if _SEQUENTIAL_RE.match(t):
@@ -497,6 +553,22 @@ def parse_transform(text: Optional[str]) -> Transform:
     # --- Phase 4a: date format conversion ---
 
     m = _DATE_FORMAT_RE.match(t)
+    if m:
+        token = m.group(1).upper()
+        if token in _DATE_FORMAT_MAP:
+            input_fmt, output_fmt = _DATE_FORMAT_MAP[token]
+            return DateFormatTransform(input_format=input_fmt, output_format=output_fmt)
+
+    # --- Phase 4e: extended date format patterns ---
+
+    m = _DATE_FORMAT_ALT_RE.match(t)
+    if m:
+        token = m.group(1).upper()
+        if token in _DATE_FORMAT_MAP:
+            input_fmt, output_fmt = _DATE_FORMAT_MAP[token]
+            return DateFormatTransform(input_format=input_fmt, output_format=output_fmt)
+
+    m = _DATE_FORMAT_TOKEN_RE.match(t)
     if m:
         token = m.group(1).upper()
         if token in _DATE_FORMAT_MAP:
@@ -523,6 +595,21 @@ def parse_transform(text: Optional[str]) -> Transform:
         else:
             decimal_places = -1
         return ScaleTransform(factor=factor, decimal_places=decimal_places)
+
+    # --- Phase 4e: extended scale patterns ---
+
+    m = _SCALE_BY_RE.match(t)
+    if m:
+        return ScaleTransform(factor=float(m.group(1)), decimal_places=0)
+
+    m = _TIMES_N_RE.match(t)
+    if m:
+        return ScaleTransform(factor=float(m.group(1)), decimal_places=0)
+
+    m = _DIVIDE_RESULT_RE.match(t)
+    if m:
+        divisor = float(m.group(1))
+        return ScaleTransform(factor=1.0 / divisor, decimal_places=0)
 
     # --- Blank / space patterns (check before generic "pass" pattern) ---
 
@@ -591,6 +678,20 @@ def parse_transform(text: Optional[str]) -> Transform:
     m = _TRUNCATE_N_RE.match(t)
     if m:
         return TruncateTransform(length=int(m.group(1)))
+
+    # --- Phase 4e: extended pad patterns ---
+
+    m = _SPACE_PAD_RE.match(t)
+    if m:
+        return PadTransform(length=int(m.group(1)), pad_char=" ", direction="right")
+
+    m = _ZERO_FILL_LEFT_RE.match(t)
+    if m:
+        return PadTransform(length=int(m.group(1)), pad_char="0", direction="left")
+
+    m = _PAD_LEFT_ZEROS_RE.match(t)
+    if m:
+        return PadTransform(length=int(m.group(1)), pad_char="0", direction="left")
 
     # --- Phase 2: concatenation (two or more fields joined by +) ---
 
