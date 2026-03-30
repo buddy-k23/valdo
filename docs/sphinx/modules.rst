@@ -292,6 +292,26 @@ Pipeline
    :members:
    :undoc-members:
 
+Transforms
+----------
+
+.. automodule:: src.transforms
+   :members:
+   :undoc-members:
+
+.. automodule:: src.transforms.models
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: src.transforms.transform_parser
+   :members:
+   :undoc-members:
+
+.. automodule:: src.transforms.transform_engine
+   :members:
+   :undoc-members:
+
 Reporting & Utilities
 ---------------------
 
