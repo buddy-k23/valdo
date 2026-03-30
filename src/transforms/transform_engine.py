@@ -30,6 +30,7 @@ from src.transforms.models import (
     DefaultTransform,
     FieldMapTransform,
     NumericFormatTransform,
+    ScaleTransform,
     SequentialNumberTransform,
     Transform,
 )
@@ -217,6 +218,21 @@ def apply_transform(
                 result = parsed_dt.strftime(transform.output_format)
             except ValueError:
                 result = transform.default_value
+
+    elif isinstance(transform, ScaleTransform):
+        if _is_absent(raw_source):
+            result = transform.default_value
+        else:
+            try:
+                numeric = float(raw_source)
+            except (ValueError, TypeError):
+                result = transform.default_value
+            else:
+                scaled = numeric * transform.factor
+                if transform.decimal_places >= 0:
+                    result = f"{scaled:.{transform.decimal_places}f}"
+                else:
+                    result = str(scaled)
 
     elif isinstance(transform, ConditionalTransform):
         branch = (

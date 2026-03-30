@@ -327,6 +327,45 @@ class DateFormatTransform(Transform):
 
 
 @dataclass
+class ScaleTransform(Transform):
+    """Multiply a numeric source value by a fixed factor and return the result.
+
+    The source value is parsed as a ``float``.  If the source is absent,
+    blank, or cannot be parsed as a number, ``default_value`` is returned
+    instead.
+
+    Attributes:
+        factor: Multiplier applied to the parsed source value.  Use values
+            less than 1 to achieve division (e.g. ``0.01`` divides by 100).
+            Defaults to ``1.0`` (identity).
+        decimal_places: Number of digits after the decimal point in the
+            output string.  When ``-1`` (the default), ``str()`` is used
+            directly — trailing zeros are not explicitly controlled.  When
+            ``>= 0``, the result is formatted with exactly that many decimal
+            places via Python's ``f"{value:.{n}f}"`` format.
+        default_value: Returned when the source is absent, blank, or
+            cannot be parsed as a float.  Defaults to ``""`` (empty string).
+        type: Always ``'scale'``.
+
+    Example::
+
+        ScaleTransform(factor=100, decimal_places=0)
+        # "123.45" → "12345"
+
+        ScaleTransform(factor=0.01, decimal_places=2)
+        # "12345" → "123.45"
+    """
+
+    factor: float = 1.0
+    decimal_places: int = -1
+    default_value: str = ""
+    type: str = field(default="scale", init=False)
+
+    def __post_init__(self) -> None:
+        self.type = "scale"
+
+
+@dataclass
 class ConditionalTransform(Transform):
     """Apply one of two transforms depending on whether a condition holds.
 

@@ -8,7 +8,8 @@ adds ``ConditionalTransform`` for IF/ELSE dispatch.  Phase 3e adds
 ``SequentialNumberTransform`` and ``SequentialCounter`` for stateful
 row-counter tracking.  Phase 4a adds ``DateFormatTransform`` for date
 string reformatting.  Phase 4b adds ``NumericFormatTransform`` for
-signed zero-padded numeric output.
+signed zero-padded numeric output.  Phase 4c adds ``ScaleTransform`` for
+multiply/divide numeric scaling.
 
 Exported names
 --------------
@@ -45,6 +46,9 @@ Exported names
     Stateful counter manager for ``SequentialNumberTransform`` instances.
 ``NumericFormatTransform``
     Zero-pad a numeric value to a fixed width with optional sign prefix.
+``ScaleTransform``
+    Multiply a numeric source value by a fixed factor (supports divide via
+    fractional factors).
 ``parse_transform``
     Parse a free-text transform description into a typed ``Transform``.
 ``apply_transform``
@@ -67,6 +71,7 @@ from src.transforms.models import (
     InCondition,
     NullCheckCondition,
     NumericFormatTransform,
+    ScaleTransform,
     SequentialNumberTransform,
     Transform,
 )
@@ -90,6 +95,7 @@ __all__ = [
     "SequentialNumberTransform",
     "SequentialCounter",
     "NumericFormatTransform",
+    "ScaleTransform",
     "parse_transform",
     "apply_transform",
     "evaluate_condition",

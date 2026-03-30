@@ -34,6 +34,7 @@ fall back to a direct source-field copy.
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Optional
 
@@ -50,6 +51,7 @@ from src.transforms.models import (
     InCondition,
     NullCheckCondition,
     NumericFormatTransform,
+    ScaleTransform,
     SequentialNumberTransform,
     Transform,
 )
@@ -181,6 +183,21 @@ _ZERO_PAD_RE = re.compile(r"^zero-?pad\s+to\s+(\d+)$", re.IGNORECASE)
 # "Pad to N digits"
 _PAD_TO_DIGITS_RE = re.compile(r"^pad\s+to\s+(\d+)\s+digits$", re.IGNORECASE)
 
+# ---------------------------------------------------------------------------
+# Phase 4c: scale (multiply/divide) patterns
+# ---------------------------------------------------------------------------
+
+# "Multiply by N" — N may be an integer or decimal
+_MULTIPLY_RE = re.compile(
+    r"^multiply\s+by\s+(\d+(?:\.\d+)?)$",
+    re.IGNORECASE,
+)
+
+# "Divide by N" — N may be an integer or decimal
+_DIVIDE_RE = re.compile(
+    r"^divide\s+by\s+(\d+(?:\.\d+)?)$",
+    re.IGNORECASE,
+)
 
 # ---------------------------------------------------------------------------
 # Phase 3d: conditional IF/THEN/ELSE patterns
@@ -449,6 +466,27 @@ def parse_transform(text: Optional[str]) -> Transform:
         if token in _DATE_FORMAT_MAP:
             input_fmt, output_fmt = _DATE_FORMAT_MAP[token]
             return DateFormatTransform(input_format=input_fmt, output_format=output_fmt)
+
+    # --- Phase 4c: scale (multiply / divide) ---
+
+    m = _MULTIPLY_RE.match(t)
+    if m:
+        factor = float(m.group(1))
+        return ScaleTransform(factor=factor, decimal_places=0)
+
+    m = _DIVIDE_RE.match(t)
+    if m:
+        divisor = float(m.group(1))
+        factor = 1.0 / divisor
+        # Compute decimal_places from the magnitude of the divisor so that
+        # "Divide by 100" → decimal_places=2, "Divide by 1000" → 3, etc.
+        # For non-power-of-ten divisors, fall back to -1 (auto).
+        log_val = math.log10(divisor)
+        if log_val == int(log_val) and log_val > 0:
+            decimal_places = int(log_val)
+        else:
+            decimal_places = -1
+        return ScaleTransform(factor=factor, decimal_places=decimal_places)
 
     # --- Blank / space patterns (check before generic "pass" pattern) ---
 

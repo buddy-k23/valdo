@@ -633,3 +633,70 @@ class TestDateFormatTransformParser:
         result = parse_transform("Default to '20250101'")
         from src.transforms.models import DateFormatTransform
         assert not isinstance(result, DateFormatTransform)
+
+
+# ---------------------------------------------------------------------------
+# ScaleTransform patterns (Phase 4c)
+# ---------------------------------------------------------------------------
+
+
+class TestScaleTransformParser:
+    """Parser recognises multiply/divide scaling patterns."""
+
+    def test_multiply_by_100(self):
+        """'Multiply by 100' → ScaleTransform with factor=100."""
+        from src.transforms.models import ScaleTransform
+
+        result = parse_transform("Multiply by 100")
+        assert isinstance(result, ScaleTransform)
+        assert result.factor == 100.0
+        assert result.decimal_places == 0
+
+    def test_multiply_by_10(self):
+        """'Multiply by 10' → ScaleTransform with factor=10."""
+        from src.transforms.models import ScaleTransform
+
+        result = parse_transform("Multiply by 10")
+        assert isinstance(result, ScaleTransform)
+        assert result.factor == 10.0
+
+    def test_divide_by_100(self):
+        """'Divide by 100' → ScaleTransform with factor=0.01 and decimal_places=2."""
+        from src.transforms.models import ScaleTransform
+
+        result = parse_transform("Divide by 100")
+        assert isinstance(result, ScaleTransform)
+        assert abs(result.factor - 0.01) < 1e-12
+        assert result.decimal_places == 2
+
+    def test_multiply_case_insensitive(self):
+        """'MULTIPLY BY 100' (all caps) → ScaleTransform."""
+        from src.transforms.models import ScaleTransform
+
+        result = parse_transform("MULTIPLY BY 100")
+        assert isinstance(result, ScaleTransform)
+        assert result.factor == 100.0
+
+    def test_divide_case_insensitive(self):
+        """'divide by 1000' (all lower) → ScaleTransform."""
+        from src.transforms.models import ScaleTransform
+
+        result = parse_transform("divide by 1000")
+        assert isinstance(result, ScaleTransform)
+        assert abs(result.factor - 0.001) < 1e-12
+
+    def test_multiply_type_attribute(self):
+        """Parsed ScaleTransform has type='scale'."""
+        from src.transforms.models import ScaleTransform
+
+        result = parse_transform("Multiply by 100")
+        assert isinstance(result, ScaleTransform)
+        assert result.type == "scale"
+
+    def test_divide_decimal_factor(self):
+        """'Divide by 4' → factor=0.25."""
+        from src.transforms.models import ScaleTransform
+
+        result = parse_transform("Divide by 4")
+        assert isinstance(result, ScaleTransform)
+        assert abs(result.factor - 0.25) < 1e-12

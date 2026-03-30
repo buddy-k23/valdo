@@ -2013,6 +2013,7 @@ spreadsheets.
 | `default` | `DefaultTransform` | Use source when present; fall back to configured value |
 | `blank` | `BlankTransform` | Always output blank / space-filled result |
 | `constant` | `ConstantTransform` | Always output a fixed constant, ignoring source |
+| `scale` | `ScaleTransform` | Multiply source by a numeric factor (use `factor < 1` for division) |
 
 ### Parsing mapping text
 
@@ -2036,6 +2037,12 @@ t = parse_transform("Hard-code to 'USD'")
 t = parse_transform("Initialize to spaces")
 # BlankTransform(fill_char=' ', fill_value='', type='blank')
 
+t = parse_transform("Multiply by 100")
+# ScaleTransform(factor=100.0, decimal_places=0, type='scale')
+
+t = parse_transform("Divide by 100")
+# ScaleTransform(factor=0.01, decimal_places=2, type='scale')
+
 t = parse_transform(None)
 # Transform(type='noop')
 ```
@@ -2052,9 +2059,43 @@ Recognised patterns include:
 - `Convert to CCYYMMDD` / `Convert to YYYYMMDD` → ISO date (`YYYY-MM-DD`) to `YYYYMMDD`
 - `Convert to MM/DD/CCYY` → ISO date to `MM/DD/YYYY`
 - `Date format CCYYMMDD` / `Format as CCYYMMDD` → same as above
+- `Multiply by N` — multiply source by N; result formatted as integer string by default
+- `Divide by N` — divide source by N; decimal places inferred from magnitude of N
 
 Any unrecognised text (including complex conditional expressions) returns
 `Transform(type='noop')` so callers can safely fall back to a direct copy.
+
+### Scale transforms
+
+`ScaleTransform` multiplies a numeric source value by a configurable factor.
+It is designed for unit conversions found in real-world batch mappings such as
+"Multiply by 100" (convert dollars to cents) or "Divide by 100" (convert cents
+to dollars).
+
+```python
+from src.transforms import apply_transform
+from src.transforms.models import ScaleTransform
+
+# Dollars → cents (integer output)
+t = ScaleTransform(factor=100, decimal_places=0)
+apply_transform("123.45", t)  # '12345'
+
+# Cents → dollars (2 decimal places)
+t = ScaleTransform(factor=0.01, decimal_places=2)
+apply_transform("12345", t)  # '123.45'
+
+# Absent / blank source returns default_value
+t = ScaleTransform(factor=100, decimal_places=0, default_value="0")
+apply_transform("", t)   # '0'
+apply_transform(None, t) # '0'
+
+# Non-numeric source also returns default_value
+apply_transform("N/A", t) # '0'
+```
+
+When `decimal_places=-1` (the default), the raw `str(float)` result is used,
+which may include trailing `.0`.  Set `decimal_places=0` to suppress the
+decimal point entirely.
 
 ### Applying a transform
 

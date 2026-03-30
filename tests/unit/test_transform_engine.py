@@ -742,3 +742,87 @@ class TestDateFormatTransformEngine:
         )
         result = _apply(None, t)
         assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# ScaleTransform (Phase 4c)
+# ---------------------------------------------------------------------------
+
+
+class TestScaleTransformEngine:
+    """apply_transform behaviour for ScaleTransform."""
+
+    def test_multiply_by_100_integer_result(self):
+        """Multiplying 123.45 by 100 produces '12345.0' (auto str conversion)."""
+        from src.transforms.models import ScaleTransform
+
+        t = ScaleTransform(factor=100)
+        result = apply_transform("123.45", t)
+        # With decimal_places=-1 (auto), result is str(float).
+        # 123.45 * 100 = 12345.0
+        assert result == "12345.0"
+
+    def test_multiply_by_100_decimal_places_zero_strips_decimal(self):
+        """decimal_places=0 formats result as integer string (no decimal point)."""
+        from src.transforms.models import ScaleTransform
+
+        t = ScaleTransform(factor=100, decimal_places=0)
+        result = apply_transform("123.45", t)
+        assert result == "12345"
+
+    def test_divide_by_100_decimal_places_two(self):
+        """Dividing 12345 by 100 with decimal_places=2 produces '123.45'."""
+        from src.transforms.models import ScaleTransform
+
+        t = ScaleTransform(factor=0.01, decimal_places=2)
+        result = apply_transform("12345", t)
+        assert result == "123.45"
+
+    def test_absent_source_returns_default_value(self):
+        """When source is absent/blank, default_value is returned."""
+        from src.transforms.models import ScaleTransform
+
+        t = ScaleTransform(factor=100, default_value="0")
+        result = apply_transform("", t)
+        assert result == "0"
+
+    def test_none_source_returns_default_value(self):
+        """When source is None, default_value is returned."""
+        from src.transforms.models import ScaleTransform
+
+        t = ScaleTransform(factor=100, default_value="0")
+        result = apply_transform(None, t)
+        assert result == "0"
+
+    def test_unparseable_source_returns_default_value(self):
+        """When source cannot be parsed as float, default_value is returned."""
+        from src.transforms.models import ScaleTransform
+
+        t = ScaleTransform(factor=100, default_value="ERR")
+        result = apply_transform("ABC", t)
+        assert result == "ERR"
+
+    def test_field_length_padding_applied_to_result(self):
+        """field_length right-pads the scaled result."""
+        from src.transforms.models import ScaleTransform
+
+        t = ScaleTransform(factor=1, decimal_places=0)
+        result = apply_transform("42", t, field_length=8)
+        assert result == "42      "
+        assert len(result) == 8
+
+    def test_default_value_empty_when_not_set(self):
+        """When no default_value configured, absent source returns empty string."""
+        from src.transforms.models import ScaleTransform
+
+        t = ScaleTransform(factor=100)
+        result = apply_transform("", t)
+        assert result == ""
+
+    def test_integer_source_value(self):
+        """Integer-string source is handled correctly."""
+        from src.transforms.models import ScaleTransform
+
+        t = ScaleTransform(factor=2, decimal_places=0)
+        result = apply_transform("50", t)
+        assert result == "100"
