@@ -9,7 +9,7 @@
 - API: `src/api/main.py` (FastAPI app at port 8000)
 - Web UI: `src/reports/static/ui.html` (served at `/ui`)
 
-**Test suite:** 1024 unit tests + 46 E2E Playwright tests = 1070 total, 84% coverage
+**Test suite:** 1063 unit tests + 46 E2E Playwright tests = 1109 total, 84% coverage
 
 **Active branch:** `main`
 
@@ -32,6 +32,7 @@
 | `valdo run-etl-pipeline` | Execute ETL pipeline validation gates from YAML config |
 | `valdo serve` | Start the FastAPI server |
 | `valdo schedule` | List/run scheduled test suites |
+| `valdo generate-multi-record` | Interactive wizard (or non-interactive with `--discriminator`/`--type`) to create multi-record YAML configs |
 | `valdo submit-task` | Submit a canonical task request |
 
 ---
@@ -43,7 +44,12 @@
 - **Cross-field:** validate relationships between fields in the same row
 - **Cross-row:** validate across rows grouped by key columns — unique, unique_composite, consistent, sequential, group_count, group_sum
 - **Multi-record-type:** validate files containing interleaved record types (e.g. header/detail/trailer) with per-type mappings, cardinality constraints, and 7 cross-type checks (required_companion, header_trailer_count, header_trailer_sum, header_detail_consistent, header_trailer_match, type_sequence, expect_count)
-- **PII scrubbing:** `--suppress-pii` flag redacts field values in reports (default: enabled)
+- **PII scrubbing:** `--suppress-pii` flag redacts field values in reports (default: enabled); Web UI "Redact PII in report" checkbox in Quick Test tab
+- **Default values:** `default_value` column in mapping CSV templates — converter extracts defaults from transformation text (e.g. "Default to '100030'" becomes `default_value=100030`)
+- **Elapsed time:** Validation reports include `elapsed_seconds` in JSON results and an "Elapsed" tile in the HTML dashboard
+- **Fixed-width valid values trimming:** Validator strips both field value and valid values before comparison, so `"LS  "` matches `"LS"`
+- **Descriptive text filtering:** Rules converter skips sentences in Expected/Values column, treating only actual codes/values as `valid_values`
+- **Fixed-width length warnings:** Mapping converter warns if any field has a missing length; warning appears in the upload response
 
 ### Database Integration
 - Oracle via `oracledb` thin mode (configurable via `ORACLE_*` env vars)
@@ -197,7 +203,7 @@ docs/
   splunk-setup.md                # Audit log integration
   sphinx/                        # Auto-generated API reference
 tests/
-  unit/              # 1024 unit tests (pytest)
+  unit/              # 1063 unit tests (pytest)
   e2e/               # 46 Playwright E2E tests
 ci/
   templates/         # Azure DevOps + GitLab CI reusable templates

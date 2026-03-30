@@ -323,6 +323,12 @@ comparison.
   Generates an HTML diff report with match counts and field-level statistics.
 - **Metric cards** -- Colour-coded summary tiles (green for pass, red for fail,
   amber for partial) displayed immediately after validation completes.
+- **Redact PII checkbox** -- "Redact PII in report" toggle (checked by default).
+  When enabled, field values in the generated report are scrubbed. This passes
+  the `suppress_pii` parameter to the validate API. Uncheck it only when you
+  need to see raw values for debugging.
+- **Elapsed time tile** -- After validation completes, an "Elapsed" metric card
+  shows total processing time in seconds.
 - **Report links** -- Download or view the generated HTML/JSON report directly
   from the results area.
 
@@ -513,7 +519,7 @@ Expected output:
 
 ```
 Validating customers.txt against customer_mapping...
-Total rows: 15000 | Valid: 14980 | Invalid: 20 | Quality: 99.87%
+Total rows: 15000 | Valid: 14980 | Invalid: 20 | Quality: 99.87% | Elapsed: 2.34s
 Report saved to report.html
 ```
 
@@ -840,6 +846,7 @@ Review the draft, adjust field names and types as needed, then use it with
 | `convert-rules` | Convert Excel/CSV rules template to JSON |
 | `convert-suite` | Convert Excel test suite to YAML |
 | `extract` | Extract data from Oracle to file |
+| `generate-multi-record` | Interactive wizard (or non-interactive) to create multi-record YAML configs |
 | `infer-mapping` | Auto-generate a draft mapping JSON from a sample data file |
 | `mask` | Mask PII fields in batch files using configurable strategies |
 | `reconcile` | Reconcile a mapping with database schema |
@@ -901,6 +908,7 @@ curl -X POST http://localhost:8000/api/v1/files/validate \
   "errors": [...],
   "warnings": [...],
   "quality_score": 99.87,
+  "elapsed_seconds": 2.34,
   "report_url": "/uploads/validate_customers.html"
 }
 ```
@@ -1269,6 +1277,34 @@ batch files.
 
 Supported `format` values: `fixed_width`, `pipe_delimited`, `csv`, `tsv`.
 
+#### Mapping CSV template columns
+
+When creating mappings from CSV templates (via the Mapping Generator tab,
+`valdo convert-mappings`, or `POST /api/v1/mappings/upload`), the expected
+columns are:
+
+| Column | Required | Description |
+|---|---|---|
+| `field_name` | Yes | Source field name |
+| `data_type` | Yes | `String`, `Numeric`, `Date`, etc. |
+| `position` | Fixed-width only | 1-indexed start column |
+| `length` | Fixed-width only | Field width in characters |
+| `target_name` | No | Target/destination field name |
+| `required` | No | `Yes` or `No` |
+| `format` | No | Format mask (e.g. `CCYYMMDD`, `9(10)V99`) |
+| `default_value` | No | Default value for the field (e.g. `USD`, `00000000`). The converter also extracts defaults from the `transformation` column when it contains phrases like "Default to '100030'". |
+| `transformation` | No | Free-text transformation description |
+| `valid_values` | No | Pipe-separated list of allowed values (e.g. `A\|I\|C`) |
+| `description` | No | Human-readable field description |
+
+The `default_value` column sits between `format` and `transformation`. If both
+an explicit `default_value` and a "Default to ..." phrase in `transformation`
+are present, the explicit column value takes precedence.
+
+**Note on fixed-width length warnings:** If any fixed-width field has a missing
+`length` value, the converter emits a warning. This warning is included in the
+upload API response so you can fix the template before validation.
+
 ### Rules JSON Schema
 
 Rules files live in `config/rules/` and define business rules to apply during
@@ -1306,6 +1342,20 @@ validation.
   ]
 }
 ```
+
+#### Rules converter behaviour notes
+
+**Descriptive text filtering:** When converting a rules CSV/Excel template, the
+converter automatically skips descriptive sentences in the Expected/Values
+column.  Only actual codes and values (e.g. `A`, `I`, `C`) are treated as
+`valid_values`.  Sentences like "Must be one of the following codes" are
+filtered out.
+
+**Fixed-width valid values trimming:** During validation of fixed-width files,
+the validator strips leading and trailing whitespace from both the field value
+and each entry in `valid_values` before comparison.  This means a field value
+of `"LS  "` (padded to fill its fixed-width length) correctly matches the rule
+value `"LS"`.
 
 ### Cross-Row Validation
 
@@ -1546,6 +1596,39 @@ multi-record structure and returns a downloadable YAML config file.
 
 The response is an `application/x-yaml` attachment that can be saved directly
 and used with `--multi-record`.
+
+#### CLI config generator (`valdo generate-multi-record`)
+
+The `generate-multi-record` command creates a multi-record YAML config file
+without manually writing YAML by hand.
+
+**Interactive mode (wizard):**
+
+```bash
+valdo generate-multi-record --output config/multi-record/my_config.yaml
+```
+
+The wizard walks you through:
+1. Entering the discriminator field name, position, and length.
+2. Selecting mapping JSON files for each record type.
+3. Auto-matching rules files to mappings (e.g. `header_mapping.json` finds
+   `header_rules.json` or `header_mapping_rules.json` automatically).
+4. Optionally adding cross-type rules.
+
+**Non-interactive mode:**
+
+```bash
+valdo generate-multi-record \
+  --output config/multi-record/atoctran_config.yaml \
+  --discriminator "REC_TYPE:1:3" \
+  --type "header:HDR:config/mappings/hdr_mapping.json" \
+  --type "detail:DTL:config/mappings/dtl_mapping.json" \
+  --type "trailer:TRL:config/mappings/trl_mapping.json"
+```
+
+The `--discriminator` flag takes `FIELD:POSITION:LENGTH` format. Each `--type`
+flag takes `NAME:MATCH_VALUE:MAPPING_PATH` format. Rules files are
+auto-discovered from the mapping directory.
 
 #### Generating mapping/rules CSVs from Excel specs
 

@@ -2,7 +2,7 @@
 
 Automated batch file validation, comparison, and ETL testing tool with multi-database support, REST API, and modern web UI.
 
-**1,024 unit tests + 46 E2E tests | 80%+ coverage | ADA/WCAG 2.1 AA compliant**
+**1,063 unit tests + 46 E2E tests = 1,109 total | 80%+ coverage | ADA/WCAG 2.1 AA compliant**
 
 ## Features
 
@@ -13,7 +13,10 @@ Automated batch file validation, comparison, and ETL testing tool with multi-dat
 - **Business rules engine**: not_empty, regex, numeric, date_format, valid_values, min/max, exact_length
 - **Cross-field rules**: IF/THEN validation between fields in the same row
 - **Cross-row rules**: unique, sequential, consistent, group_count, group_sum across rows grouped by key
-- **PII scrubbing**: Redact field values in HTML/CSV reports by default (`--suppress-pii`)
+- **PII scrubbing**: Redact field values in HTML/CSV reports by default (`--suppress-pii`); Web UI toggle in Quick Test tab
+- **Default values**: `default_value` column in mapping CSV templates, auto-extracted from transformation text
+- **Elapsed time reporting**: `elapsed_seconds` field in JSON results, "Elapsed" tile in HTML dashboard
+- **Multi-record config wizard**: `valdo generate-multi-record` interactive wizard or non-interactive mode with `--discriminator`/`--type` flags
 
 ### Database Integration
 - **Pluggable adapters**: Oracle, PostgreSQL, SQLite (configurable via `DB_ADAPTER` env var)
