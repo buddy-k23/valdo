@@ -284,6 +284,114 @@ class DateFormatTransform(Transform):
 
 
 @dataclass
+class NumericFormatTransform(Transform):
+    """Format a numeric value as a zero-padded (optionally signed) string.
+
+    Attributes:
+        length: Total output width including the sign character when
+            *signed* is ``True``.
+        signed: When ``True`` a leading ``'+'`` or ``'-'`` is included.
+            Defaults to ``False``.
+        type: Always ``'numeric_format'``.
+
+    Example::
+
+        t = NumericFormatTransform(length=9, signed=False)
+        apply_transform("42", t)   # -> "000000042"
+
+        s = NumericFormatTransform(length=10, signed=True)
+        apply_transform("42", s)   # -> "+000000042"
+    """
+
+    length: int = 0
+    signed: bool = False
+    type: str = field(default="numeric_format", init=False)
+
+    def __post_init__(self) -> None:
+        self.type = "numeric_format"
+
+
+@dataclass
+class ScaleTransform(Transform):
+    """Multiply a numeric value by *factor* and optionally round the result.
+
+    Attributes:
+        factor: Multiplier applied to the source value.  Use a fraction
+            (e.g. ``0.01``) to divide.
+        decimal_places: Number of decimal places in the output string.
+            Defaults to ``0`` (integer output).
+        type: Always ``'scale'``.
+
+    Example::
+
+        t = ScaleTransform(factor=100, decimal_places=0)
+        apply_transform("1.23", t)  # -> "123"
+
+        d = ScaleTransform(factor=0.01, decimal_places=0)
+        apply_transform("12300", d)  # -> "123"
+    """
+
+    factor: float = 1.0
+    decimal_places: int = 0
+    type: str = field(default="scale", init=False)
+
+    def __post_init__(self) -> None:
+        self.type = "scale"
+
+
+@dataclass
+class PadTransform(Transform):
+    """Pad a string value to a fixed *length* using *pad_char*.
+
+    Attributes:
+        length: Target output length after padding.
+        pad_char: Character used to fill the padding.  Defaults to ``' '``.
+        direction: ``'left'`` or ``'right'`` padding.  Defaults to
+            ``'right'`` (equivalent to ``str.ljust``).
+        type: Always ``'pad'``.
+
+    Example::
+
+        t = PadTransform(length=10, pad_char='0', direction='left')
+        apply_transform("42", t)   # -> "0000000042"
+
+        r = PadTransform(length=8, pad_char=' ', direction='right')
+        apply_transform("HI", r)   # -> "HI      "
+    """
+
+    length: int = 0
+    pad_char: str = " "
+    direction: str = "right"
+    type: str = field(default="pad", init=False)
+
+    def __post_init__(self) -> None:
+        self.type = "pad"
+
+
+@dataclass
+class TruncateTransform(Transform):
+    """Truncate a string value to at most *max_length* characters.
+
+    Attributes:
+        max_length: Maximum number of characters to keep.  Values shorter
+            than *max_length* are returned unchanged.
+        type: Always ``'truncate'``.
+
+    Example::
+
+        t = TruncateTransform(max_length=5)
+        apply_transform("ABCDEFGH", t)  # -> "ABCDE"
+        apply_transform("AB", t)        # -> "AB"
+    """
+
+    max_length: int = 0
+    type: str = field(default="truncate", init=False)
+
+    def __post_init__(self) -> None:
+        self.type = "truncate"
+
+
+@dataclass
 class ConditionalTransform(Transform):
     """Apply one of two transforms depending on whether a condition holds.
 

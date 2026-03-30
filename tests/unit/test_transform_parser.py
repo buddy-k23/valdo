@@ -563,3 +563,243 @@ class TestDateFormatTransformParser:
         result = parse_transform("Default to '20250101'")
         from src.transforms.models import DateFormatTransform
         assert not isinstance(result, DateFormatTransform)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4e: Extended format text parsers
+# ---------------------------------------------------------------------------
+
+
+class TestPhase4eExtendedPatterns:
+    """Phase 4e — additional natural-language parser variants for Phase 4 types."""
+
+    # --- DateFormatTransform extended patterns ---
+
+    def test_convert_date_ccyymmdd(self):
+        """'Convert date CCYYMMDD' maps to DateFormatTransform CCYYMMDD output."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("Convert date CCYYMMDD")
+        assert isinstance(result, DateFormatTransform)
+        assert result.input_format == "%Y-%m-%d"
+        assert result.output_format == "%Y%m%d"
+
+    def test_reformat_date_to_yyyymmdd(self):
+        """'Reformat date to YYYYMMDD' maps to DateFormatTransform CCYYMMDD output."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("Reformat date to YYYYMMDD")
+        assert isinstance(result, DateFormatTransform)
+        assert result.input_format == "%Y-%m-%d"
+        assert result.output_format == "%Y%m%d"
+
+    def test_date_ccyymmdd_format_token(self):
+        """'CCYYMMDD format' maps to DateFormatTransform CCYYMMDD output."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("CCYYMMDD format")
+        assert isinstance(result, DateFormatTransform)
+        assert result.input_format == "%Y-%m-%d"
+        assert result.output_format == "%Y%m%d"
+
+    def test_mmddccyy_token_in_date_format_map(self):
+        """'Convert to MMDDCCYY' maps to DateFormatTransform MMDDYYYY→CCYYMMDD."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("Convert to MMDDCCYY")
+        assert isinstance(result, DateFormatTransform)
+        assert result.input_format == "%m%d%Y"
+        assert result.output_format == "%Y%m%d"
+
+    def test_mmddyyyy_token_in_date_format_map(self):
+        """'Convert to MMDDYYYY' maps to DateFormatTransform MMDDYYYY→CCYYMMDD."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("Convert to MMDDYYYY")
+        assert isinstance(result, DateFormatTransform)
+        assert result.input_format == "%m%d%Y"
+        assert result.output_format == "%Y%m%d"
+
+    def test_reformat_date_case_insensitive(self):
+        """'reformat date to CCYYMMDD' is case-insensitive."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("reformat date to CCYYMMDD")
+        assert isinstance(result, DateFormatTransform)
+        assert result.output_format == "%Y%m%d"
+
+    def test_convert_date_yyyymmdd(self):
+        """'Convert date YYYYMMDD' maps to DateFormatTransform CCYYMMDD output."""
+        from src.transforms.models import DateFormatTransform
+
+        result = parse_transform("Convert date YYYYMMDD")
+        assert isinstance(result, DateFormatTransform)
+        assert result.input_format == "%Y-%m-%d"
+        assert result.output_format == "%Y%m%d"
+
+    # --- NumericFormatTransform extended patterns ---
+
+    def test_n_digit_zero_filled(self):
+        """'9-digit zero-filled' → NumericFormatTransform(length=9, signed=False)."""
+        from src.transforms.models import NumericFormatTransform
+
+        result = parse_transform("9-digit zero-filled")
+        assert isinstance(result, NumericFormatTransform)
+        assert result.length == 9
+        assert result.signed is False
+
+    def test_n_digit_zero_fill_without_d(self):
+        """'5-digit zero-fill' (no trailing d) → NumericFormatTransform(length=5)."""
+        from src.transforms.models import NumericFormatTransform
+
+        result = parse_transform("5-digit zero-fill")
+        assert isinstance(result, NumericFormatTransform)
+        assert result.length == 5
+        assert result.signed is False
+
+    def test_zero_fill_to_n_positions(self):
+        """'Zero-fill to 10 positions' → NumericFormatTransform(length=10, signed=False)."""
+        from src.transforms.models import NumericFormatTransform
+
+        result = parse_transform("Zero-fill to 10 positions")
+        assert isinstance(result, NumericFormatTransform)
+        assert result.length == 10
+        assert result.signed is False
+
+    def test_zerofill_to_n_position_singular(self):
+        """'Zerofill to 1 position' (no hyphen, singular) → NumericFormatTransform."""
+        from src.transforms.models import NumericFormatTransform
+
+        result = parse_transform("Zerofill to 1 position")
+        assert isinstance(result, NumericFormatTransform)
+        assert result.length == 1
+
+    def test_signed_n_digit(self):
+        """'Signed 15-digit' → NumericFormatTransform(length=15, signed=True)."""
+        from src.transforms.models import NumericFormatTransform
+
+        result = parse_transform("Signed 15-digit")
+        assert isinstance(result, NumericFormatTransform)
+        assert result.length == 15
+        assert result.signed is True
+
+    def test_signed_n_digit_case_insensitive(self):
+        """'SIGNED 8-digit' is case-insensitive."""
+        from src.transforms.models import NumericFormatTransform
+
+        result = parse_transform("SIGNED 8-digit")
+        assert isinstance(result, NumericFormatTransform)
+        assert result.length == 8
+        assert result.signed is True
+
+    # --- ScaleTransform extended patterns ---
+
+    def test_scale_by_n(self):
+        """'Scale by 100' → ScaleTransform(factor=100, decimal_places=0)."""
+        from src.transforms.models import ScaleTransform
+
+        result = parse_transform("Scale by 100")
+        assert isinstance(result, ScaleTransform)
+        assert result.factor == 100
+        assert result.decimal_places == 0
+
+    def test_times_n(self):
+        """'Times 10' → ScaleTransform(factor=10, decimal_places=0)."""
+        from src.transforms.models import ScaleTransform
+
+        result = parse_transform("Times 10")
+        assert isinstance(result, ScaleTransform)
+        assert result.factor == 10
+        assert result.decimal_places == 0
+
+    def test_divide_result_by_n(self):
+        """'Divide result by 100' → ScaleTransform(factor=0.01, decimal_places=0)."""
+        from src.transforms.models import ScaleTransform
+
+        result = parse_transform("Divide result by 100")
+        assert isinstance(result, ScaleTransform)
+        # Divide by 100 → factor = 1/100 = 0.01
+        assert abs(result.factor - (1 / 100)) < 1e-9
+
+    def test_scale_by_decimal(self):
+        """'Scale by 1.5' → ScaleTransform(factor=1.5)."""
+        from src.transforms.models import ScaleTransform
+
+        result = parse_transform("Scale by 1.5")
+        assert isinstance(result, ScaleTransform)
+        assert result.factor == 1.5
+
+    def test_scale_by_case_insensitive(self):
+        """'SCALE BY 10' is case-insensitive."""
+        from src.transforms.models import ScaleTransform
+
+        result = parse_transform("SCALE BY 10")
+        assert isinstance(result, ScaleTransform)
+        assert result.factor == 10
+
+    # --- PadTransform extended patterns ---
+
+    def test_space_pad_to_n(self):
+        """'Space-pad to 20' → PadTransform(length=20, pad_char=' ', direction='right')."""
+        from src.transforms.models import PadTransform
+
+        result = parse_transform("Space-pad to 20")
+        assert isinstance(result, PadTransform)
+        assert result.length == 20
+        assert result.pad_char == " "
+        assert result.direction == "right"
+
+    def test_spacepad_no_hyphen(self):
+        """'Spacepad to 15' (no hyphen) → PadTransform(length=15, pad_char=' ')."""
+        from src.transforms.models import PadTransform
+
+        result = parse_transform("Spacepad to 15")
+        assert isinstance(result, PadTransform)
+        assert result.length == 15
+        assert result.pad_char == " "
+
+    def test_zero_fill_left_to_n(self):
+        """'Zero-fill left to 8' → PadTransform(length=8, pad_char='0', direction='left')."""
+        from src.transforms.models import PadTransform
+
+        result = parse_transform("Zero-fill left to 8")
+        assert isinstance(result, PadTransform)
+        assert result.length == 8
+        assert result.pad_char == "0"
+        assert result.direction == "left"
+
+    def test_zerofill_left_no_hyphen(self):
+        """'Zerofill left to 6' (no hyphen) → PadTransform(length=6, pad_char='0', direction='left')."""
+        from src.transforms.models import PadTransform
+
+        result = parse_transform("Zerofill left to 6")
+        assert isinstance(result, PadTransform)
+        assert result.length == 6
+        assert result.pad_char == "0"
+
+    def test_pad_left_n_zeros(self):
+        """'Pad left 5 zeros' → PadTransform(length=5, pad_char='0', direction='left')."""
+        from src.transforms.models import PadTransform
+
+        result = parse_transform("Pad left 5 zeros")
+        assert isinstance(result, PadTransform)
+        assert result.length == 5
+        assert result.pad_char == "0"
+        assert result.direction == "left"
+
+    def test_pad_left_1_zero_singular(self):
+        """'Pad left 1 zero' (singular) → PadTransform(length=1, pad_char='0', direction='left')."""
+        from src.transforms.models import PadTransform
+
+        result = parse_transform("Pad left 1 zero")
+        assert isinstance(result, PadTransform)
+        assert result.length == 1
+        assert result.pad_char == "0"
+
+    def test_space_pad_to_case_insensitive(self):
+        """'SPACE-PAD TO 10' is case-insensitive."""
+        from src.transforms.models import PadTransform
+
+        result = parse_transform("SPACE-PAD TO 10")
+        assert isinstance(result, PadTransform)
+        assert result.length == 10
