@@ -706,3 +706,140 @@ class TestComputeOverallStatus:
             {"status": "UNKNOWN"},
         ]
         assert _compute_overall_status(results) == "PARTIAL"
+
+
+# ---------------------------------------------------------------------------
+# quality_score wiring — issue #239
+# ---------------------------------------------------------------------------
+
+
+class TestQualityScoreInRunHistory:
+    """Verify quality_score flows from results through to JSON history and DB."""
+
+    def _make_suite_yaml(self, tmp_path):
+        import yaml
+
+        suite_yaml = tmp_path / "suite.yaml"
+        suite_yaml.write_text(
+            yaml.dump(
+                {
+                    "name": "QScore Suite",
+                    "environment": "dev",
+                    "tests": [
+                        {
+                            "name": "ping",
+                            "type": "api_check",
+                            "url": "http://localhost:9999/nope",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return suite_yaml
+
+    def test_quality_score_included_in_json_history_when_present(
+        self, tmp_path, monkeypatch
+    ):
+        """quality_score in the result dict must appear in run_history.json entry."""
+        import json
+        import glob
+        from pathlib import Path
+        from src.commands.run_tests_command import _append_run_history
+        from src.contracts.test_suite import TestSuiteConfig
+
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+        suite = TestSuiteConfig(name="QScore Suite", environment="dev", tests=[])
+        results = [
+            {
+                "name": "ping",
+                "type": "api_check",
+                "status": "PASS",
+                "quality_score": 98.5,
+            }
+        ]
+        _append_run_history(
+            output_dir=str(reports_dir),
+            run_id="qs-run-001",
+            suite=suite,
+            results=results,
+            suite_report_path=str(reports_dir / "report.html"),
+            env="dev",
+        )
+
+        history_file = reports_dir.parent / "reports" / "run_history.json"
+        history = json.loads(history_file.read_text(encoding="utf-8"))
+        assert len(history) == 1
+        assert "quality_score" in history[0]
+        assert history[0]["quality_score"] == 98.5
+
+    def test_quality_score_is_none_when_absent_from_results(
+        self, tmp_path, monkeypatch
+    ):
+        """quality_score must be None (not KeyError) when not in any result."""
+        import json
+        from pathlib import Path
+        from src.commands.run_tests_command import _append_run_history
+        from src.contracts.test_suite import TestSuiteConfig
+
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+        suite = TestSuiteConfig(name="No Score Suite", environment="dev", tests=[])
+        results = [
+            {
+                "name": "ping",
+                "type": "api_check",
+                "status": "PASS",
+                # no quality_score key
+            }
+        ]
+        _append_run_history(
+            output_dir=str(reports_dir),
+            run_id="qs-run-002",
+            suite=suite,
+            results=results,
+            suite_report_path=str(reports_dir / "report.html"),
+            env="dev",
+        )
+
+        history_file = reports_dir.parent / "reports" / "run_history.json"
+        history = json.loads(history_file.read_text(encoding="utf-8"))
+        assert len(history) == 1
+        assert "quality_score" in history[0]
+        assert history[0]["quality_score"] is None
+
+    def test_insert_run_called_with_quality_score_when_db_configured(
+        self, tmp_path, monkeypatch
+    ):
+        """write_run_to_db entry must include quality_score."""
+        import src.utils.archive as archive_mod
+        from unittest.mock import MagicMock, patch
+        from src.commands.run_tests_command import run_suite_from_path
+
+        monkeypatch.setenv("ORACLE_USER", "CM3INT")
+        monkeypatch.setattr(
+            archive_mod.ArchiveManager,
+            "archive_run",
+            lambda self_inner, **kwargs: tmp_path,
+        )
+
+        suite_yaml = self._make_suite_yaml(tmp_path)
+        output_dir = tmp_path / "reports"
+        output_dir.mkdir()
+
+        captured_entries = []
+
+        def fake_db_write(entry, run_id, results):
+            captured_entries.append(entry)
+
+        with patch("src.commands.run_tests_command._db_write_run", fake_db_write):
+            run_suite_from_path(
+                suite_path=str(suite_yaml),
+                params={},
+                env="dev",
+                output_dir=str(output_dir),
+            )
+
+        assert len(captured_entries) == 1
+        assert "quality_score" in captured_entries[0]

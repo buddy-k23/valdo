@@ -24,41 +24,44 @@ class TestRunHistoryFetch:
         """fetch_history should return rows ordered newest-first."""
         from src.database.run_history import RunHistoryRepository
 
+        def _row(run_id, suite_name, environment, ts, status,
+                 pass_count, fail_count, skip_count, total_count,
+                 report_url, archive_path):
+            row = MagicMock()
+            row._mapping = {
+                "run_id": run_id,
+                "suite_name": suite_name,
+                "environment": environment,
+                "run_timestamp": ts,
+                "status": status,
+                "pass_count": pass_count,
+                "fail_count": fail_count,
+                "skip_count": skip_count,
+                "total_count": total_count,
+                "report_url": report_url,
+                "archive_path": archive_path,
+            }
+            return row
+
+        # DB returns rows already in DESC order (newest first)
+        db_rows = [
+            _row("run-002", "Suite B", "uat",
+                 datetime(2026, 3, 25, 12, 0, 0, tzinfo=timezone.utc),
+                 "PASS", 5, 0, 0, 5, "/reports/b.html", "/archive/002"),
+            _row("run-001", "Suite A", "dev",
+                 datetime(2026, 3, 24, 10, 0, 0, tzinfo=timezone.utc),
+                 "FAIL", 2, 1, 0, 3, "/reports/a.html", "/archive/001"),
+        ]
+
+        mock_engine = MagicMock()
         mock_conn = MagicMock()
-        mock_raw_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.__enter__ = MagicMock(return_value=mock_raw_conn)
-        mock_conn.__exit__ = MagicMock(return_value=False)
-        mock_raw_conn.cursor.return_value = mock_cursor
+        mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+        mock_result = MagicMock()
+        mock_result.__iter__ = MagicMock(return_value=iter(db_rows))
+        mock_conn.execute.return_value = mock_result
 
-        # Simulate Oracle returning rows in DESC order (newest first)
-        mock_cursor.description = [
-            ("RUN_ID",),
-            ("SUITE_NAME",),
-            ("ENVIRONMENT",),
-            ("RUN_TIMESTAMP",),
-            ("STATUS",),
-            ("PASS_COUNT",),
-            ("FAIL_COUNT",),
-            ("SKIP_COUNT",),
-            ("TOTAL_COUNT",),
-            ("REPORT_URL",),
-            ("ARCHIVE_PATH",),
-        ]
-        mock_cursor.fetchall.return_value = [
-            (
-                "run-002", "Suite B", "uat",
-                datetime(2026, 3, 25, 12, 0, 0, tzinfo=timezone.utc),
-                "PASS", 5, 0, 0, 5, "/reports/b.html", "/archive/002",
-            ),
-            (
-                "run-001", "Suite A", "dev",
-                datetime(2026, 3, 24, 10, 0, 0, tzinfo=timezone.utc),
-                "FAIL", 2, 1, 0, 3, "/reports/a.html", "/archive/001",
-            ),
-        ]
-
-        repo = RunHistoryRepository(conn=mock_conn)
+        repo = RunHistoryRepository(engine=mock_engine, schema_prefix="CM3INT.")
         rows = repo.fetch_history(limit=20)
 
         assert len(rows) == 2

@@ -442,12 +442,25 @@ def _append_run_history(
             provided, it is shared with the archive manifest so both records
             carry the same timestamp.  Falls back to ``datetime.utcnow()`` if
             not supplied.
+
+    Note:
+        ``quality_score`` is extracted from the first result that carries a
+        non-``None`` ``quality_score`` value.  It is stored as ``None`` when
+        no result contains this field.  The value is written to both the JSON
+        history file and the DB entry (when Oracle is configured).
     """
     history_path = Path(output_dir) / ".." / "reports" / "run_history.json"
     history_path = history_path.resolve()
     history_path.parent.mkdir(parents=True, exist_ok=True)
 
     overall_status = _compute_overall_status(results)
+
+    # Aggregate quality_score: use the first non-None value found in results,
+    # or None when no result carries a quality_score.
+    quality_score: float | None = next(
+        (r["quality_score"] for r in results if r.get("quality_score") is not None),
+        None,
+    )
 
     entry: dict[str, Any] = {
         "run_id": run_id,
@@ -461,6 +474,7 @@ def _append_run_history(
         "skip_count":  sum(1 for r in results if r["status"] == "SKIPPED"),
         "total_count": len(results),
         "archive_path": archive_path,
+        "quality_score": quality_score,
     }
 
     existing: list[dict[str, Any]] = []

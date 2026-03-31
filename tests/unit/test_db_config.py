@@ -202,25 +202,22 @@ class TestRunHistorySchema:
         assert "MYSCHEMA.CM3_RUN_HISTORY" in _sql_fetch_history("MYSCHEMA")
 
     def test_repository_uses_env_schema(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """RunHistoryRepository picks up ORACLE_SCHEMA from env."""
-        monkeypatch.setenv("ORACLE_SCHEMA", "PRODSCHEMA")
-
+        """RunHistoryRepository picks up schema prefix from get_schema_prefix()."""
+        from unittest.mock import MagicMock, patch
         from src.database.run_history import RunHistoryRepository
-        from src.database.connection import OracleConnection
 
-        conn = OracleConnection(username="u", password="p", dsn="d")
-        repo = RunHistoryRepository(conn=conn)
+        mock_engine = MagicMock()
+        with patch("src.database.run_history.get_schema_prefix", return_value="PRODSCHEMA."):
+            repo = RunHistoryRepository(engine=mock_engine)
 
-        assert repo._schema == "PRODSCHEMA"
+        assert repo._schema_prefix == "PRODSCHEMA."
 
     def test_repository_schema_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Explicit schema kwarg overrides env var."""
-        monkeypatch.setenv("ORACLE_SCHEMA", "ENVSCHEMA")
-
+        """Explicit schema_prefix kwarg overrides the default."""
+        from unittest.mock import MagicMock
         from src.database.run_history import RunHistoryRepository
-        from src.database.connection import OracleConnection
 
-        conn = OracleConnection(username="u", password="p", dsn="d")
-        repo = RunHistoryRepository(conn=conn, schema="OVERRIDE")
+        mock_engine = MagicMock()
+        repo = RunHistoryRepository(engine=mock_engine, schema_prefix="OVERRIDE.")
 
-        assert repo._schema == "OVERRIDE"
+        assert repo._schema_prefix == "OVERRIDE."

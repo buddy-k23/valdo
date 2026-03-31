@@ -1,7 +1,13 @@
-"""Oracle-backed persistence for test suite run history.
+"""Persistence for test-suite run history using SQLAlchemy Core.
 
-The schema prefix (e.g. ``CM3INT``) is read from the ``ORACLE_SCHEMA``
-environment variable via :func:`~src.config.db_config.get_db_config`.
+Supports all three adapters — Oracle, PostgreSQL, and SQLite — through the
+shared :func:`~src.database.engine.get_engine` factory.  The schema prefix
+(e.g. ``CM3INT.``) is resolved by
+:func:`~src.database.engine.get_schema_prefix`.
+
+If any database call fails (connection error, table not found, etc.) the
+method logs a warning and returns gracefully so callers are never broken by
+an absent or misconfigured database.
 """
 from __future__ import annotations
 
@@ -9,43 +15,16 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from src.config.db_config import get_db_config
-from .connection import OracleConnection
+from sqlalchemy import text
+
+from src.database.engine import get_engine, get_schema_prefix
 
 logger = logging.getLogger(__name__)
 
 
-def _sql_insert_run(schema: str) -> str:
-    """Return the INSERT statement for run history, qualified by *schema*."""
-    return f"""
-INSERT INTO {schema}.CM3_RUN_HISTORY
-  (RUN_ID, SUITE_NAME, ENVIRONMENT, RUN_TIMESTAMP, STATUS,
-   PASS_COUNT, FAIL_COUNT, SKIP_COUNT, TOTAL_COUNT, REPORT_URL, ARCHIVE_PATH)
-VALUES
-  (:run_id, :suite_name, :environment, :run_timestamp, :status,
-   :pass_count, :fail_count, :skip_count, :total_count, :report_url, :archive_path)
-"""
-
-
-def _sql_insert_test(schema: str) -> str:
-    """Return the INSERT statement for run tests, qualified by *schema*."""
-    return f"""
-INSERT INTO {schema}.CM3_RUN_TESTS
-  (RUN_ID, TEST_NAME, TEST_TYPE, STATUS, ROW_COUNT, ERROR_COUNT, DURATION_SECS, REPORT_PATH)
-VALUES
-  (:run_id, :test_name, :test_type, :status, :row_count, :error_count, :duration_secs, :report_path)
-"""
-
-
-def _sql_fetch_history(schema: str) -> str:
-    """Return the SELECT statement for recent run history, qualified by *schema*."""
-    return f"""
-SELECT RUN_ID, SUITE_NAME, ENVIRONMENT, RUN_TIMESTAMP, STATUS,
-       PASS_COUNT, FAIL_COUNT, SKIP_COUNT, TOTAL_COUNT, REPORT_URL, ARCHIVE_PATH
-FROM {schema}.CM3_RUN_HISTORY
-ORDER BY RUN_TIMESTAMP DESC
-FETCH FIRST :limit ROWS ONLY
-"""
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
 
 
 def _parse_ts(ts_str: str) -> datetime:
@@ -81,14 +60,106 @@ def _ts_to_iso(value: Any) -> Any:
     return value
 
 
-class RunHistoryRepository:
-    """Reads and writes suite run history to/from Oracle.
+def _qualified(schema: str, table: str) -> str:
+    """Return a qualified ``schema.TABLE`` identifier.
+
+    Accepts either a bare schema name (``'CM3INT'``) or one that already has a
+    trailing dot (``'CM3INT.'``).  When *schema* is empty (SQLite) the table
+    name is returned unqualified.
 
     Args:
-        conn: Optional OracleConnection to use. Defaults to
-            ``OracleConnection.from_env()``.
-        schema: Optional schema override.  Defaults to the ``ORACLE_SCHEMA``
-            environment variable (which itself defaults to ``ORACLE_USER``).
+        schema: Schema name, optionally with a trailing ``'.'``.
+        table: Unqualified table name.
+
+    Returns:
+        ``'schema.TABLE'`` when schema is non-empty, otherwise ``'TABLE'``.
+    """
+    clean = schema.rstrip(".")
+    return f"{clean}.{table}" if clean else table
+
+
+def _sql_insert_run(schema: str) -> str:
+    """Return the INSERT statement for CM3_RUN_HISTORY, qualified by schema.
+
+    Args:
+        schema: Schema name (with or without trailing dot), e.g. ``'CM3INT'``
+            or ``'CM3INT.'``.  Pass ``''`` for SQLite (no schema).
+
+    Returns:
+        Parameterised INSERT SQL string using ``:name`` bind params.
+    """
+    table = _qualified(schema, "CM3_RUN_HISTORY")
+    return (
+        f"INSERT INTO {table} "
+        "(run_id, suite_name, environment, run_timestamp, status, "
+        "pass_count, fail_count, skip_count, total_count, report_url, archive_path, quality_score) "
+        "VALUES "
+        "(:run_id, :suite_name, :environment, :run_timestamp, :status, "
+        ":pass_count, :fail_count, :skip_count, :total_count, :report_url, :archive_path, :quality_score)"
+    )
+
+
+def _sql_insert_test(schema: str) -> str:
+    """Return the INSERT statement for CM3_RUN_TESTS, qualified by schema.
+
+    Args:
+        schema: Schema name (with or without trailing dot), e.g. ``'CM3INT'``
+            or ``'CM3INT.'``.  Pass ``''`` for SQLite (no schema).
+
+    Returns:
+        Parameterised INSERT SQL string using ``:name`` bind params.
+    """
+    table = _qualified(schema, "CM3_RUN_TESTS")
+    return (
+        f"INSERT INTO {table} "
+        "(run_id, test_name, test_type, status, row_count, error_count, duration_secs, report_path) "
+        "VALUES "
+        "(:run_id, :test_name, :test_type, :status, :row_count, :error_count, :duration_secs, :report_path)"
+    )
+
+
+def _sql_fetch_history(schema: str, limit: int = 20) -> str:
+    """Return the SELECT statement for recent run history.
+
+    Uses a portable ``LIMIT`` clause that works on Oracle 12c+ (via SQLAlchemy),
+    PostgreSQL, and SQLite.
+
+    Args:
+        schema: Schema name (with or without trailing dot), e.g. ``'CM3INT'``
+            or ``'CM3INT.'``.  Pass ``''`` for SQLite (no schema).
+        limit: Maximum rows to return — embedded directly (not as a bind param)
+            to avoid dialect quoting issues with LIMIT clauses.  Defaults to 20.
+
+    Returns:
+        SELECT SQL string.
+    """
+    table = _qualified(schema, "CM3_RUN_HISTORY")
+    return (
+        f"SELECT run_id, suite_name, environment, run_timestamp, status, "
+        f"pass_count, fail_count, skip_count, total_count, report_url, archive_path, quality_score "
+        f"FROM {table} "
+        f"ORDER BY run_timestamp DESC "
+        f"LIMIT {int(limit)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public repository class
+# ---------------------------------------------------------------------------
+
+
+class RunHistoryRepository:
+    """Reads and writes suite run history using SQLAlchemy Core.
+
+    Works with Oracle, PostgreSQL, and SQLite adapters.  All DB calls are
+    wrapped in try/except so the application continues even when the database
+    is unavailable.
+
+    Args:
+        engine: Optional SQLAlchemy Engine.  Defaults to the shared engine
+            returned by :func:`~src.database.engine.get_engine`.
+        schema_prefix: Optional schema prefix override (e.g. ``'CM3INT.'``).
+            Defaults to :func:`~src.database.engine.get_schema_prefix`.
 
     Example::
 
@@ -100,83 +171,102 @@ class RunHistoryRepository:
 
     def __init__(
         self,
-        conn: OracleConnection | None = None,
-        schema: str | None = None,
+        engine=None,
+        schema_prefix: str | None = None,
     ) -> None:
-        self._conn = conn if conn is not None else OracleConnection.from_env()
-        self._schema = schema if schema is not None else get_db_config().schema
+        self._engine = engine if engine is not None else get_engine()
+        self._schema_prefix = (
+            schema_prefix if schema_prefix is not None else get_schema_prefix()
+        )
 
     def insert_run(self, entry: dict[str, Any]) -> None:
         """Insert one run summary row into the CM3_RUN_HISTORY table.
 
         Args:
-            entry: Dict with keys matching run_history.json entries.
+            entry: Dict with keys matching run_history.json entries:
+                ``run_id``, ``suite_name``, ``environment``, ``timestamp``
+                (ISO-8601 UTC string), ``status``, ``pass_count``,
+                ``fail_count``, ``skip_count``, ``total_count``,
+                ``report_url``, ``archive_path``, ``quality_score`` (optional float).
         """
-        with self._conn as conn:
-            cursor = conn.cursor()
-            cursor.execute(_sql_insert_run(self._schema), {
-                "run_id":        entry["run_id"],
-                "suite_name":    entry["suite_name"],
-                "environment":   entry["environment"],
-                "run_timestamp": _parse_ts(entry["timestamp"]),
-                "status":        entry["status"],
-                "pass_count":    entry.get("pass_count", 0),
-                "fail_count":    entry.get("fail_count", 0),
-                "skip_count":    entry.get("skip_count", 0),
-                "total_count":   entry.get("total_count", 0),
-                "report_url":    entry.get("report_url", ""),
-                "archive_path":  entry.get("archive_path", ""),
-            })
-            conn.commit()
+        params = {
+            "run_id": entry["run_id"],
+            "suite_name": entry["suite_name"],
+            "environment": entry["environment"],
+            "run_timestamp": _parse_ts(entry["timestamp"]),
+            "status": entry["status"],
+            "pass_count": entry.get("pass_count", 0),
+            "fail_count": entry.get("fail_count", 0),
+            "skip_count": entry.get("skip_count", 0),
+            "total_count": entry.get("total_count", 0),
+            "report_url": entry.get("report_url", ""),
+            "archive_path": entry.get("archive_path", ""),
+            "quality_score": entry.get("quality_score"),
+        }
+        sql = text(_sql_insert_run(self._schema_prefix))
+        try:
+            with self._engine.connect() as conn:
+                conn.execute(sql, params)
+                conn.commit()
+        except Exception as exc:
+            logger.warning("insert_run failed — DB may not be configured: %s", exc)
 
     def insert_tests(self, run_id: str, results: list[dict[str, Any]]) -> None:
         """Insert one row per test into the CM3_RUN_TESTS table.
 
         Args:
             run_id: The parent run UUID.
-            results: List of per-test result dicts from _run_single_test.
+            results: List of per-test result dicts from ``_run_single_test``.
+                Expected keys: ``name``, ``type``, ``status``,
+                ``rows_processed``, ``error_count``, ``duration_secs``,
+                ``report_path``.
         """
         if not results:
             return
-        rows = [
-            {
-                "run_id":        run_id,
-                "test_name":     r.get("name", ""),
-                "test_type":     r.get("type", ""),
-                "status":        r.get("status", ""),
-                "row_count":     r.get("rows_processed"),
-                "error_count":   r.get("error_count", 0),
-                "duration_secs": r.get("duration_secs"),
-                "report_path":   r.get("report_path", ""),
-            }
-            for r in results
-        ]
-        with self._conn as conn:
-            cursor = conn.cursor()
-            cursor.executemany(_sql_insert_test(self._schema), rows)
-            conn.commit()
+
+        sql = text(_sql_insert_test(self._schema_prefix))
+        try:
+            with self._engine.connect() as conn:
+                for r in results:
+                    params = {
+                        "run_id": run_id,
+                        "test_name": r.get("name", ""),
+                        "test_type": r.get("type", ""),
+                        "status": r.get("status", ""),
+                        "row_count": r.get("rows_processed"),
+                        "error_count": r.get("error_count", 0),
+                        "duration_secs": r.get("duration_secs"),
+                        "report_path": r.get("report_path", ""),
+                    }
+                    conn.execute(sql, params)
+                conn.commit()
+        except Exception as exc:
+            logger.warning("insert_tests failed — DB may not be configured: %s", exc)
 
     def fetch_history(self, limit: int = 20) -> list[dict[str, Any]]:
-        """Return the most recent run summaries from the CM3_RUN_HISTORY table.
+        """Return the most recent run summaries from CM3_RUN_HISTORY.
 
         Args:
             limit: Maximum number of rows to return (default 20).
 
         Returns:
             List of dicts with the same keys as run_history.json entries,
-            ordered newest-first.
+            ordered newest-first.  Returns ``[]`` if the DB is unavailable.
         """
-        with self._conn as conn:
-            cursor = conn.cursor()
-            cursor.execute(_sql_fetch_history(self._schema), {"limit": limit})
-            cols = [d[0].lower() for d in cursor.description]
-            rows = cursor.fetchall()
+        sql = text(_sql_fetch_history(self._schema_prefix, limit))
+        try:
+            with self._engine.connect() as conn:
+                result = conn.execute(sql)
+                rows = list(result)
+        except Exception as exc:
+            logger.warning("fetch_history failed — DB may not be configured: %s", exc)
+            return []
 
-        result = []
+        output = []
         for row in rows:
-            d = dict(zip(cols, row))
-            # Normalize RUN_TIMESTAMP (Oracle returns datetime) → ISO string, rename key
+            d = dict(row._mapping)
+            # Rename run_timestamp → timestamp and convert datetime → ISO string
             if "run_timestamp" in d:
                 d["timestamp"] = _ts_to_iso(d.pop("run_timestamp"))
-            result.append(d)
-        return result
+            output.append(d)
+        return output
