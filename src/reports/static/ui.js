@@ -40,7 +40,7 @@ function switchTab(name) {
   });
   updateTabIndicator();
   // Reload trend chart whenever the Recent Runs tab is activated (#249)
-  if (name === 'runs') { loadTrendChart(); }
+  if (name === 'runs') { loadTrendChart(); loadSummaryCards(); }
 }
 
 /**
@@ -819,10 +819,145 @@ function toggleAutoRefresh() {
     toggle.classList.remove('active');
     label.textContent = 'Auto-refresh off';
   } else {
-    _autoRefreshTimer = setInterval(function() { loadRunHistory(); loadTrendChart(); }, 30000);
+    _autoRefreshTimer = setInterval(function() { loadRunHistory(); loadTrendChart(); loadSummaryCards(); }, 30000);
     toggle.classList.add('active');
     label.textContent = 'Auto-refresh on (30s)';
   }
+}
+
+// ===========================================================================
+// ===========================================================================
+// Suite Summary Cards (#252)
+// ===========================================================================
+/**
+ * Fetch suite summaries from the API and render suite summary cards.
+ *
+ * Calls GET /api/v1/runs/summaries and delegates rendering to
+ * _renderSummaryCards. Silently clears the container on error.
+ */
+function loadSummaryCards() {
+  var container = document.getElementById('suiteSummaryCards');
+  if (!container) return;
+
+  fetch('/api/v1/runs/summaries', {
+    headers: window._apiKey ? { 'X-API-Key': window._apiKey } : {}
+  })
+  .then(function(r) { return r.ok ? r.json() : []; })
+  .then(function(summaries) { _renderSummaryCards(summaries, container); })
+  .catch(function() { container.textContent = ''; });
+}
+
+/**
+ * Render suite summary cards into the given container element.
+ *
+ * Displays up to 8 cards in a responsive grid. Each card shows the suite name,
+ * last-run status badge, relative time, 30-day pass rate, and trend arrow.
+ * Clicking a card sets the trendSuiteSelect filter and reloads the trend chart.
+ *
+ * @param {Array<Object>} summaries - Array of suite summary objects from the API.
+ * @param {HTMLElement} container - The DOM element to render cards into.
+ */
+function _renderSummaryCards(summaries, container) {
+  container.innerHTML = '';
+
+  if (!summaries || summaries.length === 0) {
+    var empty = document.createElement('p');
+    empty.style.fontSize = '13px';
+    empty.style.color = 'var(--text-secondary)';
+    empty.textContent = 'No suite history yet.';
+    container.appendChild(empty);
+    return;
+  }
+
+  var grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;';
+
+  var MAX_CARDS = 8;
+  var shown = summaries.slice(0, MAX_CARDS);
+
+  shown.forEach(function(s) {
+    var card = document.createElement('div');
+    card.style.cssText = 'border:1px solid var(--border);border-radius:6px;padding:10px 12px;cursor:pointer;background:var(--bg-secondary);';
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('data-suite', s.suite_name);
+
+    // Suite name
+    var nameEl = document.createElement('div');
+    nameEl.style.cssText = 'font-weight:600;font-size:13px;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    nameEl.textContent = s.suite_name;
+    card.appendChild(nameEl);
+
+    // Status badge
+    var badge = document.createElement('span');
+    var isPass = s.last_run_status === 'PASS';
+    badge.style.cssText = 'font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;' +
+      (isPass ? 'background:#dcfce7;color:#16a34a;' : 'background:#fee2e2;color:#dc2626;');
+    badge.textContent = s.last_run_status;
+    card.appendChild(badge);
+
+    // Relative time
+    var timeEl = document.createElement('div');
+    timeEl.style.cssText = 'font-size:11px;color:var(--text-secondary);margin-top:4px;';
+    timeEl.textContent = _relativeTime(s.last_run_at);
+    card.appendChild(timeEl);
+
+    // Pass rate and trend
+    var statsEl = document.createElement('div');
+    statsEl.style.cssText = 'font-size:11px;margin-top:6px;display:flex;gap:8px;';
+    var prEl = document.createElement('span');
+    prEl.textContent = (s.pass_rate_30d || 0) + '% pass';
+    var trendEl = document.createElement('span');
+    var arrow = s.trend_direction === 'up' ? '↑' : s.trend_direction === 'down' ? '↓' : '→';
+    var arrowColor = s.trend_direction === 'up' ? '#16a34a' : s.trend_direction === 'down' ? '#dc2626' : 'var(--text-secondary)';
+    trendEl.style.color = arrowColor;
+    trendEl.textContent = arrow;
+    statsEl.appendChild(prEl);
+    statsEl.appendChild(trendEl);
+    card.appendChild(statsEl);
+
+    // Click to filter trend chart
+    card.addEventListener('click', function() {
+      var sel = document.getElementById('trendSuiteSelect');
+      if (sel) {
+        sel.value = s.suite_name;
+        if (typeof loadTrendChart === 'function') loadTrendChart();
+      }
+    });
+
+    grid.appendChild(card);
+  });
+
+  container.appendChild(grid);
+
+  // Show overflow count if more suites exist than the displayed maximum
+  if (summaries.length > MAX_CARDS) {
+    var more = document.createElement('p');
+    more.style.cssText = 'font-size:11px;color:var(--text-secondary);margin-top:6px;';
+    more.textContent = '+ ' + (summaries.length - MAX_CARDS) + ' more suites';
+    container.appendChild(more);
+  }
+}
+
+/**
+ * Convert an ISO 8601 timestamp string to a human-readable relative time.
+ *
+ * @param {string} isoStr - ISO 8601 date string (e.g. "2026-03-31T12:00:00Z").
+ * @returns {string} Human-readable string like "5 min ago", "2 hours ago", or
+ *   the original string if parsing fails.
+ */
+function _relativeTime(isoStr) {
+  if (!isoStr) return '';
+  try {
+    var diff = Date.now() - new Date(isoStr).getTime();
+    var mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + ' min ago';
+    var hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + ' hour' + (hrs > 1 ? 's' : '') + ' ago';
+    var days = Math.floor(hrs / 24);
+    return days + ' day' + (days > 1 ? 's' : '') + ' ago';
+  } catch(e) { return isoStr; }
 }
 
 // ===========================================================================
@@ -1823,6 +1958,7 @@ loadMappings();
 loadRules();
 loadRunHistory();
 loadTrendChart();
+loadSummaryCards();
 _applyBaselineColVisibility();
 
 // Wire trend suite selector change event (#249)
