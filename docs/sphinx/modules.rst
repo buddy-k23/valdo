@@ -55,6 +55,14 @@ Database
    :members:
    :undoc-members:
 
+.. automodule:: src.database.db_url
+   :members:
+   :undoc-members:
+
+.. automodule:: src.database.engine
+   :members:
+   :undoc-members:
+
 Database Adapters
 ~~~~~~~~~~~~~~~~~
 
