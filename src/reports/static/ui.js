@@ -384,20 +384,6 @@ function setBtnLoading(btn, isLoading) {
   }
 }
 
-// ===========================================================================
-// Multi-record YAML toggle (Quick Test)
-// ===========================================================================
-function toggleMrYamlSection() {
-  var section = document.getElementById('mrYamlSection');
-  var btn = document.getElementById('btnToggleMrYaml');
-  var chevron = document.getElementById('mrYamlChevron');
-  var expanded = btn.getAttribute('aria-expanded') === 'true';
-  section.style.display = expanded ? 'none' : '';
-  btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-  chevron.style.transform = expanded ? '' : 'rotate(90deg)';
-  updateButtons();
-}
-
 document.getElementById('qtMrYamlInput').addEventListener('change', updateButtons);
 
 // ===========================================================================
@@ -1469,15 +1455,6 @@ function mrValidateWithConfig() {
   var input = document.getElementById('qtMrYamlInput');
   if (input) {
     input.files = dt.files;
-    // Expand the section so the user can see it is set.
-    var section = document.getElementById('mrYamlSection');
-    var btn = document.getElementById('btnToggleMrYaml');
-    var chevron = document.getElementById('mrYamlChevron');
-    if (section && section.style.display === 'none') {
-      section.style.display = '';
-      if (btn) btn.setAttribute('aria-expanded', 'true');
-      if (chevron) chevron.style.transform = 'rotate(90deg)';
-    }
     updateButtons();
   }
 
