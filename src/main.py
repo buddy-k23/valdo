@@ -79,8 +79,10 @@ def parse(file, mapping, format, output, use_chunked, chunk_size):
               help='Redact raw field values from HTML reports (default: enabled)')
 @click.option('--multi-record', default=None, type=click.Path(exists=True),
               help='Multi-record YAML config for files with multiple record types')
+@click.option('--export-errors', default=None, type=click.Path(),
+              help='Write failed rows to this file after validation')
 def validate(file, mapping, rules, output, detailed, use_chunked, chunk_size, progress,
-             strict_fixed_width, strict_level, workers, suppress_pii, multi_record):
+             strict_fixed_width, strict_level, workers, suppress_pii, multi_record, export_errors):
     """Validate file format and content."""
     logger = setup_logger('valdo', log_to_file=False)
 
@@ -95,6 +97,7 @@ def validate(file, mapping, rules, output, detailed, use_chunked, chunk_size, pr
             file, mapping, rules, output, detailed, use_chunked, chunk_size, progress,
             strict_fixed_width, strict_level, workers, logger,
             suppress_pii=suppress_pii,
+            export_errors_path=export_errors,
         )
     except Exception as e:
         logger.error(f"Error validating file: {e}")

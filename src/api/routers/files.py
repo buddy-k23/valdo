@@ -7,7 +7,8 @@ import time
 from pathlib import Path
 import shutil
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Body
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Body, Depends
+from fastapi.responses import FileResponse
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -36,6 +37,8 @@ from src.services.retry_policy import execute_with_retries
 from src.services.metrics_registry import METRICS
 from src.utils.structured_logger import get_structured_logger, log_event
 from src.validators.threshold import ThresholdEvaluator
+from src.api.auth import require_api_key
+from src.services.error_extractor import extract_error_rows
 
 router = APIRouter()
 
@@ -632,6 +635,109 @@ async def db_compare(
         raise HTTPException(status_code=500, detail=f"DB extraction failed: {exc}")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error running db-compare: {exc}")
+
+    finally:
+        if upload_path.exists():
+            upload_path.unlink()
+
+
+@router.post("/export-errors")
+async def export_errors(
+    file: UploadFile = File(...),
+    mapping_id: str = Form(None),
+    multi_record_config: UploadFile = File(None),
+    _: str = Depends(require_api_key),
+):
+    """Run validation and return a file containing only the failed rows.
+
+    Validates the uploaded file against the provided mapping or multi-record
+    YAML config, then extracts all rows that produced validation errors into a
+    downloadable text file.  The response is always 200; when there are no
+    errors the returned file is effectively empty (fixed-width) or header-only
+    (delimited).
+
+    Args:
+        file: The batch data file to validate.
+        mapping_id: Mapping config identifier (JSON filename stem under
+            ``config/mappings/``).  Required unless ``multi_record_config``
+            is provided.
+        multi_record_config: Optional YAML file describing a multi-record
+            config.  When present, ``mapping_id`` is not required.
+
+    Returns:
+        A ``FileResponse`` with ``Content-Disposition: attachment`` and
+        filename ``errors_<original_filename>``.
+
+    Raises:
+        HTTPException: 422 if neither ``mapping_id`` nor
+            ``multi_record_config`` is supplied.
+        HTTPException: 404 if the ``mapping_id`` mapping file does not exist.
+        HTTPException: 500 on unexpected service errors.
+    """
+    if multi_record_config is None and not mapping_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Either 'mapping_id' or 'multi_record_config' must be provided",
+        )
+
+    upload_path = UPLOADS_DIR / f"export_errors_{file.filename}"
+    error_output_path = UPLOADS_DIR / f"errors_{file.filename}"
+
+    with open(upload_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    try:
+        # --- Multi-record path ---
+        if multi_record_config is not None:
+            config_bytes = await multi_record_config.read()
+            config_yaml = config_bytes.decode("utf-8", errors="replace")
+            try:
+                result = run_multi_record_validate_service(
+                    file_path=str(upload_path),
+                    config_yaml=config_yaml,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+
+            # Convert cross-type violations to error format compatible with extractor.
+            cross_violations = result.get("cross_type_violations", [])
+            errors = [
+                {"row": v.get("row", 0), "message": v.get("message", "")}
+                for v in cross_violations
+                if v.get("severity") == "error"
+            ]
+            validation_result_dict = {"errors": errors}
+        else:
+            # --- Standard field-level validation path ---
+            mapping_file = MAPPINGS_DIR / f"{mapping_id}.json"
+            if not mapping_file.exists():
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Mapping '{mapping_id}' not found",
+                )
+
+            validation_result_dict = run_validate_service(
+                file=str(upload_path),
+                mapping=str(mapping_file),
+                use_chunked=_should_use_chunked(upload_path),
+            )
+
+        extract_error_rows(
+            file_path=str(upload_path),
+            validation_result=validation_result_dict,
+            output_path=str(error_output_path),
+        )
+
+        return FileResponse(
+            path=str(error_output_path),
+            filename=f"errors_{file.filename}",
+            media_type="text/plain",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error exporting errors: {exc}")
 
     finally:
         if upload_path.exists():

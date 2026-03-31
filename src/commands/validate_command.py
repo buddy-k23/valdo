@@ -6,6 +6,21 @@ from pathlib import Path
 import click
 
 
+def _run_export_errors(file_path: str, result: dict, export_errors_path: str) -> None:
+    """Call error_extractor and print a summary line to stdout.
+
+    Args:
+        file_path: Path to the original data file.
+        result: Validation result dict containing an ``'errors'`` key.
+        export_errors_path: Destination path for the exported failed rows.
+    """
+    from src.services.error_extractor import extract_error_rows
+
+    export_result = extract_error_rows(file_path, result, export_errors_path)
+    n = export_result["exported_rows"]
+    click.echo(f"Exported {n} failed rows to {export_errors_path}")
+
+
 def _build_fixed_width_field_specs(fields):
     """Build (name, start, end) specs from mapping fields with validation."""
     field_specs = []
@@ -89,6 +104,7 @@ def run_validate_command(
     workers=1,
     logger=None,
     suppress_pii=True,
+    export_errors_path=None,
 ):
     """Validate a batch data file against a mapping and optional rules config.
 
@@ -114,6 +130,9 @@ def run_validate_command(
             logger.
         suppress_pii: When True, redact raw field values from HTML reports
             and CSV sidecars.
+        export_errors_path: Optional path to write failed rows to.  When
+            provided, :func:`~src.services.error_extractor.extract_error_rows`
+            is called after validation completes and a summary is printed.
     """
     from src.parsers.format_detector import FormatDetector
     from src.parsers.enhanced_validator import EnhancedFileValidator
@@ -229,6 +248,9 @@ def run_validate_command(
             else:
                 click.echo(click.style("\nUnsupported output type for chunked validation. Use .json or .html", fg='yellow'))
 
+        if export_errors_path:
+            _run_export_errors(file, result, export_errors_path)
+
         if not result['valid']:
             sys.exit(1)
         return
@@ -276,6 +298,9 @@ def run_validate_command(
             click.echo(f"\n✓ Validation HTML report generated: {output}")
         else:
             click.echo(click.style("\nUnsupported output type for validation. Use .json or .html", fg='yellow'))
+
+    if export_errors_path:
+        _run_export_errors(file, result, export_errors_path)
 
     if not result['valid']:
         sys.exit(1)
