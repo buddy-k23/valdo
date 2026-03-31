@@ -35,7 +35,7 @@ class TestQuickTestValidate:
 
     def test_validate_button_exists(self, ui_page):
         """Validate button should be present and clickable."""
-        btn = ui_page.locator("button:has-text('Validate')")
+        btn = ui_page.locator("#btnValidate")
         assert btn.is_visible()
 
     def test_validate_button_disabled_without_file(self, ui_page):

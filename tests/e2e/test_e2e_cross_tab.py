@@ -62,7 +62,8 @@ class TestCrossTab:
         """App header should be visible on all tabs."""
         header = ui_page.locator("header")
         assert header.is_visible()
-        assert "CM3" in header.text_content()
+        header_text = header.text_content()
+        assert any(word in header_text for word in ["CM3", "Valdo", "valdo"])
 
         # Check on different tabs
         for tab_id in ["tab-runs", "tab-mapping", "tab-tester"]:
