@@ -6,10 +6,15 @@ module implements a heuristic detector that samples the first 20 non-blank
 lines of a file and checks whether each field's declared start position begins
 with non-whitespace content.  When a field's expected start is consistently
 blank but a nearby position has non-blank content, a drift record is emitted.
+
+Delimited files (CSV, pipe, TSV) are checked by comparing the file's actual
+column headers (or column count when no header is present) against the field
+names declared in the mapping.
 """
 
 from __future__ import annotations
 
+import os
 from typing import Any, Optional
 
 # ---------------------------------------------------------------------------
@@ -169,3 +174,192 @@ def _find_actual_position(
 
     threshold = len(sample) * _CONTENT_RATIO_THRESHOLD
     return best_pos if best_score > threshold else None
+
+
+# ---------------------------------------------------------------------------
+# Delimited drift detection
+# ---------------------------------------------------------------------------
+
+
+def _detect_delimited_drift(
+    lines: list[str],
+    mapping: dict[str, Any],
+    delimiter: str,
+) -> dict[str, Any]:
+    """Detect column drift in a delimited file.
+
+    Compares the file's actual headers or column count against the field names
+    declared in the mapping.  When the first line appears to be a header row
+    (contains at least one non-numeric token), columns are matched by name.
+    Otherwise the check falls back to comparing the total column count.
+
+    Args:
+        lines: File lines (raw ``readlines()`` output is accepted).
+        mapping: Mapping dict with a ``'fields'`` list.  Each field entry should
+            have a ``'name'`` key.
+        delimiter: Column separator character (e.g. ``','``, ``'|'``, ``'\\t'``).
+
+    Returns:
+        On success::
+
+            {'drifted': bool, 'fields': list[dict]}
+
+        Each entry in ``fields`` has keys:
+            ``name``, ``expected_start`` (``None`` for delimited),
+            ``expected_length`` (``None``), ``actual_start`` (``None``),
+            ``actual_length`` (``None``), ``severity``, ``reason``.
+
+        ``reason`` values:
+            ``'column_missing'`` (severity ``'error'``) — a mapped field name
+            is absent from the header row.
+            ``'unexpected_column'`` (severity ``'warning'``) — a column in the
+            file is not declared in the mapping.
+            ``'column_count_mismatch'`` (severity ``'error'``) — no header row
+            and the column count differs; ``expected_start`` holds the expected
+            count, ``actual_start`` holds the actual count.
+
+        On early exit::
+
+            {'drifted': False, 'fields': [], 'skipped': True, 'reason': str}
+
+        Possible ``reason`` values: ``'too_short'``, ``'no_fields'``.
+    """
+    sample = [line for line in lines if line.strip()]
+    if len(sample) < 1:
+        return {"drifted": False, "fields": [], "skipped": True, "reason": "too_short"}
+
+    expected_fields = [f.get("name", "") for f in mapping.get("fields", [])]
+    if not expected_fields:
+        return {"drifted": False, "fields": [], "skipped": True, "reason": "no_fields"}
+
+    first_line_cols = sample[0].split(delimiter)
+
+    # Detect whether the first row is a header by checking for non-numeric tokens.
+    has_header = any(
+        not col.strip().lstrip("-").replace(".", "").isdigit()
+        for col in first_line_cols
+        if col.strip()
+    )
+
+    drifted_fields: list[dict[str, Any]] = []
+
+    if has_header:
+        actual_names = [c.strip() for c in first_line_cols]
+        # Missing expected columns → error
+        for field_name in expected_fields:
+            if field_name not in actual_names:
+                drifted_fields.append(
+                    {
+                        "name": field_name,
+                        "expected_start": None,
+                        "expected_length": None,
+                        "actual_start": None,
+                        "actual_length": None,
+                        "severity": "error",
+                        "reason": "column_missing",
+                    }
+                )
+        # Extra unexpected columns → warning
+        for actual_name in actual_names:
+            if actual_name and actual_name not in expected_fields:
+                drifted_fields.append(
+                    {
+                        "name": actual_name,
+                        "expected_start": None,
+                        "expected_length": None,
+                        "actual_start": None,
+                        "actual_length": None,
+                        "severity": "warning",
+                        "reason": "unexpected_column",
+                    }
+                )
+    else:
+        # No header — compare total column count.
+        actual_count = len(first_line_cols)
+        expected_count = len(expected_fields)
+        if actual_count != expected_count:
+            drifted_fields.append(
+                {
+                    "name": "_column_count",
+                    "expected_start": expected_count,
+                    "expected_length": None,
+                    "actual_start": actual_count,
+                    "actual_length": None,
+                    "severity": "error",
+                    "reason": "column_count_mismatch",
+                }
+            )
+
+    return {"drifted": len(drifted_fields) > 0, "fields": drifted_fields}
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
+
+def detect_drift(file_path: str, mapping: dict[str, Any]) -> dict[str, Any]:
+    """Detect whether a file's layout has drifted from its mapping.
+
+    Reads the file at ``file_path`` and delegates to the appropriate
+    sub-detector based on the ``'format'`` (or ``'file_format'``) key in the
+    mapping dict.
+
+    Supported format values:
+
+    * ``'csv'`` → comma delimiter
+    * ``'pipe'``, ``'pipe-delimited'``, ``'psv'`` → pipe delimiter
+    * ``'tsv'``, ``'tab'`` → tab delimiter
+    * ``'fixed'``, ``'fixed-width'``, ``'fixed_width'``, ``''`` (empty/absent)
+      → fixed-width heuristic detector
+
+    Args:
+        file_path: Absolute or relative path to the data file.
+        mapping: Mapping config dict.  Must contain a ``'fields'`` list and
+            optionally a ``'format'`` or ``'file_format'`` key.
+
+    Returns:
+        Drift report dict with at minimum ``'drifted'`` (bool) and
+        ``'fields'`` (list).  May include ``'skipped'`` and ``'reason'`` keys
+        when the check cannot be performed.
+
+        Possible ``reason`` values for skipped results:
+            ``'file_not_found'``, ``'read_error'``, ``'unsupported_format'``,
+            plus reasons propagated from the sub-detectors.
+    """
+    if not os.path.exists(file_path):
+        return {
+            "drifted": False,
+            "fields": [],
+            "skipped": True,
+            "reason": "file_not_found",
+        }
+
+    try:
+        with open(file_path, "r", errors="replace") as fh:
+            lines = fh.readlines()
+    except OSError:
+        return {
+            "drifted": False,
+            "fields": [],
+            "skipped": True,
+            "reason": "read_error",
+        }
+
+    fmt = (mapping.get("format") or mapping.get("file_format") or "").lower()
+
+    if fmt in ("csv",):
+        return _detect_delimited_drift(lines, mapping, ",")
+    elif fmt in ("pipe", "pipe-delimited", "psv"):
+        return _detect_delimited_drift(lines, mapping, "|")
+    elif fmt in ("tsv", "tab"):
+        return _detect_delimited_drift(lines, mapping, "\t")
+    elif fmt in ("fixed", "fixed-width", "fixed_width", ""):
+        return _detect_fixed_width_drift(lines, mapping)
+    else:
+        return {
+            "drifted": False,
+            "fields": [],
+            "skipped": True,
+            "reason": "unsupported_format",
+        }
