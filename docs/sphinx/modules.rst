@@ -258,6 +258,10 @@ Services
    :members:
    :undoc-members:
 
+.. automodule:: src.services.baseline_service
+   :members:
+   :undoc-members:
+
 Contracts & Adapters
 --------------------
 
