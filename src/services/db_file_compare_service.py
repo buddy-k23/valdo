@@ -13,7 +13,6 @@ The result dict always contains two top-level keys:
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -105,13 +104,14 @@ def compare_db_to_file(
     output_format: str = "json",
     key_columns: list[str] | str | None = None,
     apply_transforms: bool = False,
+    connection_override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Extract data from Oracle, format it, and compare against an actual batch file.
 
     Workflow:
     1. Validate inputs (actual_file must exist).
-    2. Connect to Oracle via environment variables and extract data using
-       either a SQL query or a table name.
+    2. Connect to Oracle via environment variables (or a direct override) and
+       extract data using either a SQL query or a table name.
     3. Optionally apply field-level transforms to each DB row via
        :class:`~src.transforms.transform_orchestrator.TransformEngine`.
     4. Write the (possibly transformed) rows to a temporary pipe-delimited file.
@@ -134,6 +134,12 @@ def compare_db_to_file(
             :class:`~src.transforms.transform_orchestrator.TransformEngine`
             before comparison, applying the field-level transforms defined in
             *mapping_config*.  Defaults to ``False`` (no transformation).
+        connection_override: Optional dict with keys ``db_host``, ``db_user``,
+            ``db_password``, ``db_schema`` (accepted but not forwarded —
+            Oracle schema equals the username in this adapter), ``db_adapter``.
+            When provided and ``db_adapter`` is ``"oracle"``, builds a direct
+            Oracle connection from these values instead of reading from env vars.
+            Non-Oracle adapters fall back to :meth:`~OracleConnection.from_env`.
 
     Returns:
         Dict with two top-level keys:
@@ -164,7 +170,15 @@ def compare_db_to_file(
     keys_str = ",".join(key_columns_list) if key_columns_list else None
 
     # --- DB Extraction -------------------------------------------------------
-    connection = OracleConnection.from_env()
+    _adapter = (connection_override or {}).get("db_adapter", "oracle")
+    if connection_override and _adapter == "oracle":
+        connection = OracleConnection(
+            username=connection_override["db_user"],
+            password=connection_override["db_password"],
+            dsn=connection_override["db_host"],
+        )
+    else:
+        connection = OracleConnection.from_env()
     extractor = DataExtractor(connection)
 
     if _is_sql_query(query_or_table):

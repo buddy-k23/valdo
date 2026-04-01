@@ -458,6 +458,63 @@ without leaving the browser.
 - **Suite runner** -- Execute a saved suite of API requests in sequence and
   view pass/fail assertions for each.
 
+### DB Compare Tab
+
+The DB Compare tab lets you compare Oracle database data against an uploaded batch file — or vice versa — through a split-panel interface.
+
+#### Comparison Directions
+
+| Direction | Source of Truth | Purpose |
+|-----------|----------------|---------|
+| **DB → File** (default) | Staging database | Verify the transformation was applied correctly |
+| **File → DB** | Uploaded file | Verify the load was successful |
+
+Click **⇄ swap** to toggle. Metric card labels update automatically; form values are preserved.
+
+#### DB Panel — Connection
+
+Click the connection chip (`🔌 host · schema`) to expand the form:
+
+| Field | Notes |
+|-------|-------|
+| DB Adapter | `oracle` (only oracle supports connection override) |
+| Host / DSN | e.g. `localhost:1521/FREEPDB1` |
+| Username | DB username |
+| Password | Never saved to sessionStorage |
+| Schema | Schema prefix (informational) |
+
+Click **🔗 Test Connection** to verify credentials before running.
+
+> When running on a non-HTTPS origin, an inline warning reminds you that credentials will be sent unencrypted.
+
+#### DB Panel — SQL Editor
+
+Write a SELECT query:
+
+- **DB → File**: `SELECT column1, column2 FROM SCHEMA.TABLE`
+- **File → DB**: `SELECT t1.col, t2.col FROM TARGET.TABLE1 t1 JOIN TARGET.TABLE2 t2 ON t1.id = t2.fk_id`
+
+#### File Panel
+
+Upload the batch file and select a mapping. **Key Columns** (set in the DB panel) are shared between both sides.
+
+Options:
+- **Apply transforms from mapping** — applies field-level transforms to DB rows before comparison
+- **Download diff as CSV** — auto-downloads the diff file when results load
+
+#### Results
+
+| Tile | Color | Description |
+|------|-------|-------------|
+| Source Rows | accent | Row count from the source side |
+| Actual Rows | accent | Row count from the actual side |
+| Matching | green | Rows that match exactly |
+| Differences | amber | Rows with field-level differences |
+| Only in Source | red | Rows present only in the source |
+| Only in Actual | red | Rows present only in the actual |
+
+The **Download Diff CSV** button generates a diff file client-side (no extra server call). CSV columns: `row_number`, `key_columns`, `field_name`, `db_value`, `file_value`, `difference_type`. The button is hidden when the compare is clean.
+
 ### Theme Toggle and Accessibility
 
 - **Theme toggle** -- A button in the top navigation switches between dark and

@@ -559,6 +559,9 @@ async def compare_job_status(job_id: str):
     )
 
 
+_ALLOWED_DB_ADAPTERS = {"oracle", "postgresql", "sqlite"}
+
+
 @router.post("/db-compare", response_model=DbCompareResult)
 async def db_compare(
     actual_file: UploadFile = File(...),
@@ -566,26 +569,53 @@ async def db_compare(
     mapping_id: str = Form(...),
     key_columns: str = Form(""),
     output_format: str = Form("json"),
+    apply_transforms: bool = Form(False),
+    db_host: str = Form(None),
+    db_user: str = Form(None),
+    db_password: str = Form(None),
+    db_schema: str = Form(None),
+    db_adapter: str = Form(None),
+    _: str = Depends(require_api_key),
 ):
-    """Extract data from Oracle and compare against an uploaded actual batch file.
+    """Extract data from a database and compare against an uploaded actual batch file.
 
-    Runs the full DB extract → temp file → compare pipeline and returns a
+    Runs the full DB extract -> temp file -> compare pipeline and returns a
     unified result containing workflow metadata and comparison statistics.
+    Optionally accepts connection override fields to use a different database
+    than the one configured via environment variables.
 
     Args:
         actual_file: The actual batch file to compare against.
-        query_or_table: SQL SELECT statement or bare Oracle table name.
+        query_or_table: SQL SELECT statement or bare table name.
         mapping_id: ID of the JSON mapping config (must exist in MAPPINGS_DIR).
         key_columns: Comma-separated key column names for row matching.
         output_format: Desired output format (``"json"`` or ``"html"``).
+        apply_transforms: If True, apply field-level transforms to DB rows before
+            comparison. Defaults to False.
+        db_host: Optional database host/DSN to override the environment default.
+        db_user: Optional database username to override the environment default.
+        db_password: Optional database password to override the environment default.
+        db_schema: Optional database schema to override the environment default.
+        db_adapter: Optional adapter name (``"oracle"``, ``"postgresql"``, or
+            ``"sqlite"``) to override the environment default.
 
     Returns:
         DbCompareResult with workflow status, row counts, and diff statistics.
 
     Raises:
+        HTTPException: 400 if ``db_adapter`` is not a recognised value.
         HTTPException: 404 if the mapping is not found.
         HTTPException: 500 if DB extraction or comparison fails.
     """
+    if db_adapter is not None and db_adapter not in _ALLOWED_DB_ADAPTERS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid db_adapter '{db_adapter}'. "
+                f"Must be one of: {', '.join(sorted(_ALLOWED_DB_ADAPTERS))}"
+            ),
+        )
+
     mapping_file = MAPPINGS_DIR / f"{mapping_id}.json"
     if not mapping_file.exists():
         raise HTTPException(status_code=404, detail=f"Mapping '{mapping_id}' not found")
@@ -597,6 +627,20 @@ async def db_compare(
     with open(upload_path, "wb") as buffer:
         shutil.copyfileobj(actual_file.file, buffer)
 
+    connection_override: dict | None = None
+    if db_host or db_user or db_password or db_adapter:
+        connection_override = {
+            k: v
+            for k, v in {
+                "db_host": db_host,
+                "db_user": db_user,
+                "db_password": db_password,
+                "db_schema": db_schema,
+                "db_adapter": db_adapter,
+            }.items()
+            if v is not None
+        }
+
     try:
         key_columns_list = [k.strip() for k in key_columns.split(",") if k.strip()]
 
@@ -606,6 +650,8 @@ async def db_compare(
             actual_file=str(upload_path),
             output_format=output_format,
             key_columns=key_columns_list or None,
+            apply_transforms=apply_transforms,
+            connection_override=connection_override,
         )
 
         workflow = result.get("workflow", {})

@@ -17,10 +17,10 @@ var _trendSuite = '';
 /**
  * Switch the active tab panel and update the sliding underline indicator.
  *
- * @param {string} name - Tab identifier: 'quick', 'runs', 'mapping', or 'tester'.
+ * @param {string} name - Tab identifier: 'quick', 'runs', 'mapping', 'tester', or 'dbcompare'.
  */
 function switchTab(name) {
-  ['quick', 'runs', 'mapping', 'tester'].forEach(function(t) {
+  ['quick', 'runs', 'mapping', 'tester', 'dbcompare'].forEach(function(t) {
     var panel = document.getElementById('panel-' + t);
     var btn   = document.getElementById('tab-' + t);
     if (t === name) {
@@ -42,6 +42,49 @@ function switchTab(name) {
   // Reload trend chart whenever the Recent Runs tab is activated (#249)
   if (name === 'runs') { loadTrendChart(); loadSummaryCards(); }
 }
+
+// ===========================================================================
+// DB Compare — direction state + swap
+// ===========================================================================
+var _dbcDirection = 'db-to-file';
+
+/**
+ * Refresh all direction-dependent labels and CSS classes on the DB Compare panel.
+ * Called on page load (implicitly via initial state) and whenever the swap button
+ * is clicked.
+ */
+function _dbcUpdateDirection() {
+  var isDbToFile = _dbcDirection === 'db-to-file';
+  var lbl = document.getElementById('dbcDirectionLabel');
+  if (lbl) lbl.textContent = isDbToFile ? 'DB is source \u00B7 File is actual' : 'File is source \u00B7 DB is actual';
+
+  var dbPanel    = document.getElementById('dbcDbPanel');
+  var filePanel  = document.getElementById('dbcFilePanel');
+  var dbHeader   = document.getElementById('dbcDbPanelHeader');
+  var fileHeader = document.getElementById('dbcFilePanelHeader');
+
+  if (dbPanel)   dbPanel.className   = 'dbc-panel ' + (isDbToFile ? 'dbc-panel--source' : 'dbc-panel--actual');
+  if (filePanel) filePanel.className = 'dbc-panel ' + (isDbToFile ? 'dbc-panel--actual' : 'dbc-panel--source');
+  if (dbHeader)   dbHeader.className   = 'dbc-panel-header' + (isDbToFile ? '' : ' dbc-panel-header--actual');
+  if (fileHeader) fileHeader.className = 'dbc-panel-header' + (isDbToFile ? ' dbc-panel-header--actual' : '');
+
+  var sqlEd = document.getElementById('dbcSqlEditor');
+  if (sqlEd) {
+    sqlEd.placeholder = isDbToFile
+      ? 'SELECT column1, column2 FROM SCHEMA.TABLE'
+      : 'SELECT t1.col, t2.col FROM TARGET.TABLE1 t1 JOIN TARGET.TABLE2 t2 ON t1.id = t2.fk_id';
+  }
+}
+
+(function() {
+  var swapBtn = document.getElementById('dbcSwapBtn');
+  if (swapBtn) {
+    swapBtn.addEventListener('click', function() {
+      _dbcDirection = (_dbcDirection === 'db-to-file') ? 'file-to-db' : 'db-to-file';
+      _dbcUpdateDirection();
+    });
+  }
+})();
 
 /**
  * Reposition the sliding underline indicator under the currently active tab button.
@@ -336,6 +379,21 @@ async function loadMappings() {
         o.textContent = label;
         sel.appendChild(o);
       });
+      // Also populate DB Compare mapping select
+      var dbcSel = document.getElementById('dbcMappingSelect');
+      if (dbcSel) {
+        while (dbcSel.firstChild) { dbcSel.removeChild(dbcSel.firstChild); }
+        var dbcPlaceholder = document.createElement('option');
+        dbcPlaceholder.value = '';
+        dbcPlaceholder.textContent = '\u2014 select mapping \u2014';
+        dbcSel.appendChild(dbcPlaceholder);
+        list.forEach(function(m) {
+          var opt = document.createElement('option');
+          opt.value = m.id;
+          opt.textContent = m.mapping_name + ' (' + m.format + ')';
+          dbcSel.appendChild(opt);
+        });
+      }
     }
   } catch (err) {
     while (sel.firstChild) { sel.removeChild(sel.firstChild); }
@@ -3256,3 +3314,346 @@ toggleAutoRefresh = function() {
     if (firstMark) firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 })();
+
+// ===========================================================================
+// DB Compare — connection chip expand/collapse + sessionStorage + db-ping
+// ===========================================================================
+(function() {
+  var _SS_KEYS = ['dbcHost', 'dbcUser', 'dbcSchema', 'dbcAdapter'];
+
+  function _dbcRestoreSession() {
+    _SS_KEYS.forEach(function(id) {
+      var el  = document.getElementById(id);
+      var val = sessionStorage.getItem('valdo-dbc-' + id);
+      if (el && val) el.value = val;
+    });
+    _dbcRefreshChip();
+  }
+
+  function _dbcSaveSession() {
+    _SS_KEYS.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) sessionStorage.setItem('valdo-dbc-' + id, el.value);
+    });
+    // Password (dbcPassword) is intentionally excluded — never persisted
+  }
+
+  function _dbcRefreshChip() {
+    var hostEl   = document.getElementById('dbcHost');
+    var schemaEl = document.getElementById('dbcSchema');
+    var chipText = document.getElementById('dbcConnChipText');
+    if (!chipText) return;
+
+    var host   = hostEl   ? hostEl.value   : '';
+    var schema = schemaEl ? schemaEl.value : '';
+
+    // Use textContent for user-supplied values to avoid XSS
+    chipText.textContent = '';
+    var icon = document.createTextNode('\uD83D\uDD0C ');
+    var hostSpan = document.createElement('span');
+    hostSpan.className = 'dbc-chip-host';
+    hostSpan.textContent = host || 'not configured';
+    chipText.appendChild(icon);
+    chipText.appendChild(hostSpan);
+    if (schema) {
+      chipText.appendChild(document.createTextNode(' \u00B7 '));
+      var schemaSpan = document.createElement('span');
+      schemaSpan.textContent = schema;
+      chipText.appendChild(schemaSpan);
+    }
+  }
+
+  function _dbcToggleConnForm() {
+    var chip = document.getElementById('dbcConnChip');
+    var form = document.getElementById('dbcConnForm');
+    var warn = document.getElementById('dbcHttpsWarning');
+    if (!chip || !form) return;
+    var isExpanded = chip.getAttribute('aria-expanded') === 'true';
+    if (isExpanded) {
+      _dbcSaveSession();
+      form.style.display = 'none';
+      chip.setAttribute('aria-expanded', 'false');
+      if (warn) warn.style.display = 'none';
+      _dbcRefreshChip();
+    } else {
+      form.style.display = '';
+      chip.setAttribute('aria-expanded', 'true');
+      if (warn && window.location.protocol !== 'https:') warn.style.display = '';
+    }
+  }
+
+  var chip = document.getElementById('dbcConnChip');
+  if (chip) {
+    chip.addEventListener('click', _dbcToggleConnForm);
+    chip.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _dbcToggleConnForm(); }
+    });
+  }
+
+  // Test Connection
+  var testBtn = document.getElementById('dbcTestConnBtn');
+  if (testBtn) {
+    testBtn.addEventListener('click', async function() {
+      var btn    = this;
+      var result = document.getElementById('dbcConnResult');
+      btn.disabled = true;
+      btn.textContent = '\u23F3 Testing\u2026';
+      if (result) result.style.display = 'none';
+      try {
+        var fd = new FormData();
+        fd.append('db_host',     (document.getElementById('dbcHost')     || {}).value || '');
+        fd.append('db_user',     (document.getElementById('dbcUser')     || {}).value || '');
+        fd.append('db_password', (document.getElementById('dbcPassword') || {}).value || '');
+        fd.append('db_schema',   (document.getElementById('dbcSchema')   || {}).value || '');
+        fd.append('db_adapter',  (document.getElementById('dbcAdapter')  || {}).value || 'oracle');
+        var apiKeyEl = document.getElementById('apiKeyInput');
+        var hdrs = apiKeyEl && apiKeyEl.value ? { 'X-API-Key': apiKeyEl.value } : {};
+        var resp = await fetch('/api/v1/system/db-ping', { method: 'POST', body: fd, headers: hdrs });
+        var data = await resp.json();
+        if (result) {
+          result.style.display = '';
+          result.className = 'dbc-conn-result ' + (data.ok ? 'ok' : 'err');
+          result.textContent = data.ok ? '\u2705 Connected' : '\u274C ' + (data.error || 'Connection failed');
+        }
+      } catch (err) {
+        if (result) {
+          result.style.display = '';
+          result.className = 'dbc-conn-result err';
+          result.textContent = '\u274C Request failed \u2014 check server is running';
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '\uD83D\uDD17 Test Connection';
+      }
+    });
+  }
+
+  // Restore session on page load
+  _dbcRestoreSession();
+
+  // Expose host getter for run button enable check
+  window._dbcGetHost = function() {
+    return (document.getElementById('dbcHost') || {}).value || '';
+  };
+})();
+
+// ===========================================================================
+// DB Compare — drop zone, run button enable/disable, run handler, results
+// ===========================================================================
+var _dbcFile = null;
+
+(function() {
+  var dz = document.getElementById('dbcDropZone');
+  var fi = document.getElementById('dbcFileInput');
+  if (!dz || !fi) return;
+
+  dz.addEventListener('click', function() { fi.click(); });
+  dz.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.key === ' ') fi.click(); });
+  dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', function() { dz.classList.remove('drag-over'); });
+  dz.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dz.classList.remove('drag-over');
+    var f = e.dataTransfer.files[0];
+    if (f) { _dbcFile = f; dz.querySelector('.dz-label').textContent = f.name; _updateDbcRunBtn(); }
+  });
+  fi.addEventListener('change', function() {
+    if (fi.files[0]) { _dbcFile = fi.files[0]; dz.querySelector('.dz-label').textContent = fi.files[0].name; _updateDbcRunBtn(); }
+  });
+})();
+
+function _updateDbcRunBtn() {
+  var btn = document.getElementById('dbcRunBtn');
+  if (!btn) return;
+  var hasFile    = !!_dbcFile;
+  var hasMapping = !!((document.getElementById('dbcMappingSelect') || {}).value);
+  var hasSql     = !!(((document.getElementById('dbcSqlEditor') || {}).value || '').trim());
+  var hasHost    = !!(window._dbcGetHost ? window._dbcGetHost() : '');
+  btn.disabled   = !(hasFile && hasMapping && hasSql && hasHost);
+}
+
+['dbcMappingSelect', 'dbcSqlEditor', 'dbcHost'].forEach(function(id) {
+  var el = document.getElementById(id);
+  if (el) el.addEventListener('input', _updateDbcRunBtn);
+  if (el) el.addEventListener('change', _updateDbcRunBtn);
+});
+
+var _dbcRunBtn = document.getElementById('dbcRunBtn');
+if (_dbcRunBtn) {
+  _dbcRunBtn.addEventListener('click', async function() {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = '\u23F3 Running\u2026';
+    var resultsEl = document.getElementById('dbcResults');
+    if (resultsEl) resultsEl.style.display = 'none';
+
+    try {
+      var fd = new FormData();
+      fd.append('actual_file',      _dbcFile);
+      fd.append('query_or_table',   document.getElementById('dbcSqlEditor').value.trim());
+      fd.append('mapping_id',       document.getElementById('dbcMappingSelect').value);
+      fd.append('key_columns',      (document.getElementById('dbcKeyColumns') || {}).value || '');
+      fd.append('output_format',    'json');
+      fd.append('apply_transforms', document.getElementById('dbcApplyTransforms').checked ? 'true' : 'false');
+      fd.append('db_host',          (document.getElementById('dbcHost')     || {}).value || '');
+      fd.append('db_user',          (document.getElementById('dbcUser')     || {}).value || '');
+      fd.append('db_password',      (document.getElementById('dbcPassword') || {}).value || '');
+      fd.append('db_schema',        (document.getElementById('dbcSchema')   || {}).value || '');
+      fd.append('db_adapter',       (document.getElementById('dbcAdapter')  || {}).value || 'oracle');
+
+      var apiKeyEl = document.getElementById('apiKeyInput');
+      var hdrs = apiKeyEl && apiKeyEl.value ? { 'X-API-Key': apiKeyEl.value } : {};
+
+      var resp = await fetch('/api/v1/files/db-compare', { method: 'POST', body: fd, headers: hdrs });
+      var data = await resp.json();
+
+      if (!resp.ok) {
+        var detail = (data && data.detail) ? data.detail : ('HTTP ' + resp.status);
+        if (resp.status === 404) {
+          _dbcShowResults(null, 'warn', '\u26A0\uFE0F Mapping not found: ' + detail);
+        } else {
+          _dbcShowResults(null, 'fail', '\u274C Server error \u2014 ' + detail);
+        }
+        return;
+      }
+
+      _dbcShowResults(
+        data,
+        data.workflow_status === 'passed' ? 'pass' : 'fail',
+        data.workflow_status === 'passed'
+          ? '\u2705 Compare complete'
+          : '\u274C DB extraction failed \u2014 check your query and connection'
+      );
+
+      if (document.getElementById('dbcDownloadCsv').checked &&
+          data.field_statistics && data.field_statistics.length > 0) {
+        _dbcTriggerCsvDownload(data.field_statistics);
+      }
+
+    } catch (err) {
+      _dbcShowResults(null, 'fail', '\u274C Request failed \u2014 check server is running');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '\u25B6 Run DB Compare';
+      _updateDbcRunBtn();
+    }
+  });
+}
+
+function _dbcShowResults(data, bannerClass, bannerText) {
+  var resultsEl = document.getElementById('dbcResults');
+  var bannerEl  = document.getElementById('dbcStatusBanner');
+  var metricsEl = document.getElementById('dbcMetrics');
+  if (!resultsEl) return;
+
+  if (bannerEl) {
+    bannerEl.className   = 'dbc-status-banner ' + bannerClass;
+    bannerEl.textContent = bannerText;
+  }
+
+  if (metricsEl && data) {
+    var isDbToFile = _dbcDirection === 'db-to-file';
+    var cards = [
+      { label: isDbToFile ? 'Source Rows' : 'Actual Rows', value: isDbToFile ? data.db_rows_extracted : data.total_rows_file2, color: '' },
+      { label: isDbToFile ? 'Actual Rows' : 'Source Rows', value: isDbToFile ? data.total_rows_file2  : data.db_rows_extracted, color: '' },
+      { label: 'Matching',       value: data.matching_rows, color: 'green' },
+      { label: 'Differences',    value: data.differences,   color: 'amber' },
+      { label: 'Only in Source', value: isDbToFile ? data.only_in_file1 : data.only_in_file2, color: 'red' },
+      { label: 'Only in Actual', value: isDbToFile ? data.only_in_file2 : data.only_in_file1, color: 'red' },
+    ];
+    metricsEl.textContent = '';
+    cards.forEach(function(c) {
+      var card  = document.createElement('div');
+      card.className = 'dbc-metric-card';
+      var val   = document.createElement('div');
+      val.className  = 'dbc-metric-value' + (c.color ? ' ' + c.color : '');
+      val.textContent = c.value != null ? c.value.toLocaleString() : '\u2014';
+      var lbl   = document.createElement('div');
+      lbl.className  = 'dbc-metric-label';
+      lbl.textContent = c.label;
+      card.appendChild(val);
+      card.appendChild(lbl);
+      metricsEl.appendChild(card);
+    });
+  } else if (metricsEl) {
+    metricsEl.textContent = '';
+  }
+
+  var dlRow = document.getElementById('dbcDownloadRow');
+  var dlBtn = document.getElementById('dbcDownloadDiffBtn');
+  if (dlRow && data) {
+    var hasDiff = ((data.differences || 0) + (data.only_in_file1 || 0) + (data.only_in_file2 || 0)) > 0;
+    dlRow.style.display = hasDiff ? '' : 'none';
+    if (dlBtn) {
+      if (!data.field_statistics) {
+        dlBtn.disabled    = true;
+        dlBtn.textContent = '\u26A0\uFE0F Detailed diff unavailable';
+      } else {
+        dlBtn.disabled    = false;
+        dlBtn.textContent = '\u2B07 Download Diff CSV';
+        dlBtn._fieldStatistics = data.field_statistics;
+      }
+    }
+  } else if (dlRow) {
+    dlRow.style.display = 'none';
+  }
+
+  resultsEl.style.display = '';
+}
+
+// ===========================================================================
+// DB Compare — client-side diff CSV
+// ===========================================================================
+function _dbcBuildDiffCsv(fieldStatistics) {
+  var rows = ['row_number,key_columns,field_name,db_value,file_value,difference_type'];
+  (fieldStatistics || []).forEach(function(stat) {
+    var fieldName = stat.field_name || stat.field || '';
+    var diffs     = stat.differences || stat.mismatches || [];
+    diffs.forEach(function(d) {
+      function esc(v) {
+        var s = (v == null ? '' : String(v)).replace(/"/g, '""');
+        return (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0) ? '"' + s + '"' : s;
+      }
+      rows.push([
+        esc(d.row_number),
+        esc(Array.isArray(d.key_columns) ? d.key_columns.join('|') : (d.key_columns || '')),
+        esc(fieldName),
+        esc(d.db_value),
+        esc(d.file_value),
+        esc(d.difference_type || 'mismatch'),
+      ].join(','));
+    });
+  });
+  return rows.join('\r\n');
+}
+
+function _dbcTriggerCsvDownload(fieldStatistics) {
+  var csv  = _dbcBuildDiffCsv(fieldStatistics);
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'db_compare_diff.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(url); }, 10000);
+}
+
+var _dbcDlBtn = document.getElementById('dbcDownloadDiffBtn');
+if (_dbcDlBtn) {
+  _dbcDlBtn.addEventListener('click', function() {
+    var btn   = this;
+    var stats = btn._fieldStatistics;
+    if (!stats) return;
+    btn.disabled    = true;
+    btn.textContent = '\u23F3 Building CSV\u2026';
+    setTimeout(function() {
+      try { _dbcTriggerCsvDownload(stats); }
+      finally {
+        btn.disabled    = false;
+        btn.textContent = '\u2B07 Download Diff CSV';
+      }
+    }, 0);
+  });
+}

@@ -92,6 +92,8 @@
             aria-controls="panel-mapping" onclick="switchTab('mapping')">Mapping Generator</button>
     <button id="tab-tester" role="tab" aria-selected="false"
             aria-controls="panel-tester" onclick="switchTab('tester')">API Tester</button>
+    <button id="tab-dbcompare" role="tab" aria-selected="false"
+            aria-controls="panel-dbcompare" onclick="switchTab('dbcompare')">DB Compare</button>
   </div>
 </nav>
 
@@ -719,6 +721,161 @@
     </div>
 
   </div><!-- /#panel-tester -->
+
+  <!-- DB COMPARE PANEL -->
+  <div id="panel-dbcompare" class="panel panel-hidden" role="tabpanel" aria-labelledby="tab-dbcompare">
+    <h2>DB Compare</h2>
+
+    <!-- Direction Bar -->
+    <div class="dbc-direction-bar">
+      <span class="dbc-side-label dbc-side-db" id="dbcDbLabel">&#x1F5C4;&#xFE0F; Database</span>
+      <button class="btn btn-secondary dbc-swap-btn" id="dbcSwapBtn"
+              aria-label="Swap comparison direction">&#x21C4; swap</button>
+      <span class="dbc-side-label dbc-side-file" id="dbcFileLabel">&#x1F4C4; File</span>
+      <span class="dbc-direction-label" id="dbcDirectionLabel">DB is source &middot; File is actual</span>
+    </div>
+
+    <!-- Split Panel -->
+    <div class="dbc-split">
+
+      <!-- DB Panel (left) -->
+      <div class="dbc-panel dbc-panel--source" id="dbcDbPanel">
+        <div class="dbc-panel-header" id="dbcDbPanelHeader">DATABASE SOURCE</div>
+        <div class="dbc-panel-body">
+
+          <!-- Connection chip (collapsed) -->
+          <div class="dbc-conn-chip" id="dbcConnChip" tabindex="0"
+               role="button" aria-expanded="false" aria-controls="dbcConnForm"
+               aria-label="DB connection settings">
+            <span id="dbcConnChipText">&#x1F50C; <span class="dbc-chip-host">not configured</span></span>
+            <span class="dbc-chip-edit">&#x25B8; edit</span>
+          </div>
+
+          <!-- HTTPS warning (shown when not on HTTPS) -->
+          <div class="dbc-https-warning" id="dbcHttpsWarning" style="display:none">
+            &#x26A0;&#xFE0F; Connection credentials will be sent over an unencrypted connection.
+          </div>
+
+          <!-- Connection form (expanded) -->
+          <div class="dbc-conn-form" id="dbcConnForm" style="display:none">
+            <div class="dbc-conn-grid">
+              <div class="dbc-field">
+                <label for="dbcAdapter">DB Adapter</label>
+                <select id="dbcAdapter">
+                  <option value="oracle">oracle</option>
+                  <option value="postgresql">postgresql</option>
+                  <option value="sqlite">sqlite</option>
+                </select>
+              </div>
+              <div class="dbc-field">
+                <label for="dbcHost">Host / DSN</label>
+                <input type="text" id="dbcHost" placeholder="localhost:1521/FREEPDB1">
+              </div>
+              <div class="dbc-field">
+                <label for="dbcUser">Username</label>
+                <input type="text" id="dbcUser" autocomplete="username">
+              </div>
+              <div class="dbc-field">
+                <label for="dbcPassword">Password</label>
+                <input type="password" id="dbcPassword" autocomplete="current-password">
+              </div>
+              <div class="dbc-field">
+                <label for="dbcSchema">Schema</label>
+                <input type="text" id="dbcSchema">
+              </div>
+              <div class="dbc-field dbc-field-action">
+                <button class="btn btn-secondary" id="dbcTestConnBtn" type="button">&#x1F517; Test Connection</button>
+              </div>
+            </div>
+            <div class="dbc-conn-result" id="dbcConnResult" style="display:none"></div>
+          </div>
+
+          <!-- SQL Editor -->
+          <div class="dbc-field-label">SQL QUERY</div>
+          <textarea id="dbcSqlEditor" class="dbc-sql-editor"
+                    placeholder="SELECT column1, column2 FROM SCHEMA.TABLE"
+                    aria-label="SQL query for DB extraction"></textarea>
+
+          <!-- Key columns -->
+          <div class="dbc-field-label">
+            <label for="dbcKeyColumns">KEY COLUMNS <span class="dbc-muted">(for row matching)</span></label>
+          </div>
+          <input type="text" id="dbcKeyColumns" class="dbc-key-input"
+                 placeholder="COL1, COL2"
+                 aria-label="Key columns for row matching (comma-separated)">
+
+        </div>
+      </div>
+
+      <!-- File Panel (right) -->
+      <div class="dbc-panel dbc-panel--actual" id="dbcFilePanel">
+        <div class="dbc-panel-header dbc-panel-header--actual" id="dbcFilePanelHeader">FILE (ACTUAL)</div>
+        <div class="dbc-panel-body">
+
+          <!-- Drop zone -->
+          <div class="drop-zone dbc-drop-zone" id="dbcDropZone" tabindex="0"
+               role="button" aria-label="Click or drag a file for DB comparison">
+            <svg class="dz-icon" aria-hidden="true" focusable="false" width="32" height="32"
+                 fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+            </svg>
+            <span class="dz-label">Drag &amp; drop or click to browse</span>
+            <span class="dz-sub">Fixed-width, CSV, TSV, pipe-delimited</span>
+          </div>
+          <input type="file" id="dbcFileInput" style="display:none"
+                 accept=".txt,.csv,.tsv,.dat,.pipe"
+                 aria-label="Batch file for DB comparison">
+
+          <!-- Mapping select -->
+          <div class="dbc-field-label">
+            <label for="dbcMappingSelect">MAPPING</label>
+          </div>
+          <select id="dbcMappingSelect" aria-label="Mapping for DB comparison">
+            <option value="">&#x2014; select mapping &#x2014;</option>
+          </select>
+
+          <!-- Key columns info note -->
+          <div class="dbc-info-note">
+            &#x2139;&#xFE0F; Key columns are shared &mdash; set in the DB panel
+          </div>
+
+          <!-- Options -->
+          <div class="dbc-field-label">OPTIONS</div>
+          <div class="dbc-options">
+            <label class="dbc-option-row">
+              <input type="checkbox" id="dbcApplyTransforms" checked>
+              Apply transforms from mapping
+            </label>
+            <label class="dbc-option-row">
+              <input type="checkbox" id="dbcDownloadCsv" checked>
+              Download diff as CSV
+            </label>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /.dbc-split -->
+
+    <!-- Run button -->
+    <div class="dbc-run-row">
+      <button class="btn btn-primary btn-lg" id="dbcRunBtn" disabled
+              data-tooltip="Run DB to file comparison">&#x25B6; Run DB Compare</button>
+    </div>
+
+    <!-- Results -->
+    <div id="dbcResults" aria-live="polite" style="display:none">
+      <div id="dbcStatusBanner" class="dbc-status-banner"></div>
+      <div class="dbc-metrics" id="dbcMetrics"></div>
+      <div class="dbc-download-row" id="dbcDownloadRow" style="display:none">
+        <button class="btn btn-secondary" id="dbcDownloadDiffBtn" type="button">
+          &#x2B07; Download Diff CSV
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /#panel-dbcompare -->
 
 </main>
 
