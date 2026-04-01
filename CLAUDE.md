@@ -9,7 +9,7 @@
 - API: `src/api/main.py` (FastAPI app at port 8000)
 - Web UI: `src/reports/static/ui.html` (served at `/ui`)
 
-**Test suite:** 1063 unit tests + 46 E2E Playwright tests = 1109 total, 84% coverage
+**Test suite:** 1730 unit tests + 106 E2E Playwright tests = 1836 total, 80% coverage
 
 **Active branch:** `main`
 
@@ -33,6 +33,8 @@
 | `valdo serve` | Start the FastAPI server |
 | `valdo schedule` | List/run scheduled test suites |
 | `valdo generate-multi-record` | Interactive wizard (or non-interactive with `--discriminator`/`--type`) to create multi-record YAML configs |
+| `valdo detect-drift` | Detect schema drift between a file and its mapping (`--file`, `--mapping`, `--output`) |
+| `valdo validate --export-errors <path>` | After validation, write failed rows to `<path>` in original format |
 | `valdo submit-task` | Submit a canonical task request |
 
 ---
@@ -57,10 +59,11 @@
 - Schema reconciliation and drift detection
 - Run history stored in Oracle tables
 
-### Web UI (4 tabs)
-- **Quick Test:** upload, validate, compare with metric cards
-- **Recent Runs:** sortable table with auto-refresh
-- **Mapping Generator:** upload templates, JSON preview, downloadable sample templates
+### Web UI (5 tabs)
+- **Quick Test:** upload, validate, compare with metric cards; drift badge (⚠️) shown after validate if schema drift detected; "Download Failed Rows" button shown when `invalid_rows > 0`
+- **Recent Runs:** sortable table with auto-refresh; trend chart (7/14/30/90d); suite summary cards; "vs Baseline" column with deviation badges
+- **Mapping Generator:** upload templates, JSON preview, downloadable sample templates; multi-record YAML wizard (5-step discriminator detection → config generation)
+- **DB Compare:** split-panel Oracle DB vs file comparison; connection chip (sessionStorage, password never stored); client-side diff CSV download; direction swap (DB→File / File→DB)
 - **API Tester:** method selector, request builder, suite runner
 - Dark/light theme toggle, help sidebar with searchable usage guide
 - ADA/WCAG 2.1 AA compliant (contrast, keyboard, ARIA, reduced motion)
@@ -147,6 +150,18 @@ cd docs/sphinx && make html
 
 > **Note:** Running a subset of tests (e.g. a single file) always reports 0% coverage and fails the coverage gate — always run `tests/unit/` for a valid coverage check.
 
+> **E2E selector rule:** Never use `button:has-text('Validate')` — two Validate buttons exist in the UI. Always use `#btnValidate` (the Quick Test button) or `#mrValidateBtn` (the wizard button).
+
+---
+
+## Branch & PR Workflow
+
+- `main` is protected — never push directly; always `git checkout -b <branch>` → PR → merge via API
+- Always use `git pull origin main --rebase` (plain `git pull` fails with divergent branches)
+- Merge PRs: `gh api repos/buddy-k23/valdo/pulls/<N>/merge -X PUT -f merge_method=squash`
+- Every PR requires `pkanduri1` review (CODEOWNERS `* @pkanduri1`)
+- Parallel branches that all touch `src/api/routers/files.py`, `ui.js`, or `ui.html` will conflict on rebase — resolve by keeping both sides of each conflict
+
 ---
 
 ## Commit Convention
@@ -205,8 +220,8 @@ docs/
   splunk-setup.md                # Audit log integration
   sphinx/                        # Auto-generated API reference
 tests/
-  unit/              # 1063 unit tests (pytest)
-  e2e/               # 46 Playwright E2E tests
+  unit/              # 1730 unit tests (pytest)
+  e2e/               # 106 Playwright E2E tests
 ci/
   templates/         # Azure DevOps + GitLab CI reusable templates
 .github/
@@ -260,5 +275,4 @@ Configurable via environment variables (defaults for local dev):
 
 ## Open Issues
 
-No critical open issues. Issue #151 (pluggable database adapters) has been
-completed -- Oracle, PostgreSQL, and SQLite adapters are now supported.
+No critical open issues. All planned feature chains (Alembic migrations, trend/baseline/drift/export services, multi-record wizard, E2E expansion) have been implemented and merged.
