@@ -6,7 +6,9 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-os.environ.setdefault("API_KEYS", "test-key:admin")
+_api_keys = os.getenv("API_KEYS", "")
+if "test-key" not in {k.split(":", 1)[0].strip() for k in _api_keys.split(",") if k.strip()}:
+    os.environ["API_KEYS"] = f"{_api_keys},test-key:admin" if _api_keys else "test-key:admin"
 
 import pytest
 from fastapi.testclient import TestClient
