@@ -3436,3 +3436,167 @@ toggleAutoRefresh = function() {
     return (document.getElementById('dbcHost') || {}).value || '';
   };
 })();
+
+// ===========================================================================
+// DB Compare — drop zone, run button enable/disable, run handler, results
+// ===========================================================================
+var _dbcFile = null;
+
+(function() {
+  var dz = document.getElementById('dbcDropZone');
+  var fi = document.getElementById('dbcFileInput');
+  if (!dz || !fi) return;
+
+  dz.addEventListener('click', function() { fi.click(); });
+  dz.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.key === ' ') fi.click(); });
+  dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', function() { dz.classList.remove('drag-over'); });
+  dz.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dz.classList.remove('drag-over');
+    var f = e.dataTransfer.files[0];
+    if (f) { _dbcFile = f; dz.querySelector('.dz-label').textContent = f.name; _updateDbcRunBtn(); }
+  });
+  fi.addEventListener('change', function() {
+    if (fi.files[0]) { _dbcFile = fi.files[0]; dz.querySelector('.dz-label').textContent = fi.files[0].name; _updateDbcRunBtn(); }
+  });
+})();
+
+function _updateDbcRunBtn() {
+  var btn = document.getElementById('dbcRunBtn');
+  if (!btn) return;
+  var hasFile    = !!_dbcFile;
+  var hasMapping = !!((document.getElementById('dbcMappingSelect') || {}).value);
+  var hasSql     = !!(((document.getElementById('dbcSqlEditor') || {}).value || '').trim());
+  var hasHost    = !!(window._dbcGetHost ? window._dbcGetHost() : '');
+  btn.disabled   = !(hasFile && hasMapping && hasSql && hasHost);
+}
+
+['dbcMappingSelect', 'dbcSqlEditor', 'dbcHost'].forEach(function(id) {
+  var el = document.getElementById(id);
+  if (el) el.addEventListener('input', _updateDbcRunBtn);
+  if (el) el.addEventListener('change', _updateDbcRunBtn);
+});
+
+var _dbcRunBtn = document.getElementById('dbcRunBtn');
+if (_dbcRunBtn) {
+  _dbcRunBtn.addEventListener('click', async function() {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = '\u23F3 Running\u2026';
+    var resultsEl = document.getElementById('dbcResults');
+    if (resultsEl) resultsEl.style.display = 'none';
+
+    try {
+      var fd = new FormData();
+      fd.append('actual_file',      _dbcFile);
+      fd.append('query_or_table',   document.getElementById('dbcSqlEditor').value.trim());
+      fd.append('mapping_id',       document.getElementById('dbcMappingSelect').value);
+      fd.append('key_columns',      (document.getElementById('dbcKeyColumns') || {}).value || '');
+      fd.append('output_format',    'json');
+      fd.append('apply_transforms', document.getElementById('dbcApplyTransforms').checked ? 'true' : 'false');
+      fd.append('db_host',          (document.getElementById('dbcHost')     || {}).value || '');
+      fd.append('db_user',          (document.getElementById('dbcUser')     || {}).value || '');
+      fd.append('db_password',      (document.getElementById('dbcPassword') || {}).value || '');
+      fd.append('db_schema',        (document.getElementById('dbcSchema')   || {}).value || '');
+      fd.append('db_adapter',       (document.getElementById('dbcAdapter')  || {}).value || 'oracle');
+
+      var apiKeyEl = document.getElementById('apiKeyInput');
+      var hdrs = apiKeyEl && apiKeyEl.value ? { 'X-API-Key': apiKeyEl.value } : {};
+
+      var resp = await fetch('/api/v1/files/db-compare', { method: 'POST', body: fd, headers: hdrs });
+      var data = await resp.json();
+
+      if (!resp.ok) {
+        var detail = (data && data.detail) ? data.detail : ('HTTP ' + resp.status);
+        if (resp.status === 404) {
+          _dbcShowResults(null, 'warn', '\u26A0\uFE0F Mapping not found: ' + detail);
+        } else {
+          _dbcShowResults(null, 'fail', '\u274C Server error \u2014 ' + detail);
+        }
+        return;
+      }
+
+      _dbcShowResults(
+        data,
+        data.workflow_status === 'passed' ? 'pass' : 'fail',
+        data.workflow_status === 'passed'
+          ? '\u2705 Compare complete'
+          : '\u274C DB extraction failed \u2014 check your query and connection'
+      );
+
+      if (document.getElementById('dbcDownloadCsv').checked &&
+          data.field_statistics && data.field_statistics.length > 0) {
+        _dbcTriggerCsvDownload(data.field_statistics);
+      }
+
+    } catch (err) {
+      _dbcShowResults(null, 'fail', '\u274C Request failed \u2014 check server is running');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '\u25B6 Run DB Compare';
+      _updateDbcRunBtn();
+    }
+  });
+}
+
+function _dbcShowResults(data, bannerClass, bannerText) {
+  var resultsEl = document.getElementById('dbcResults');
+  var bannerEl  = document.getElementById('dbcStatusBanner');
+  var metricsEl = document.getElementById('dbcMetrics');
+  if (!resultsEl) return;
+
+  if (bannerEl) {
+    bannerEl.className   = 'dbc-status-banner ' + bannerClass;
+    bannerEl.textContent = bannerText;
+  }
+
+  if (metricsEl && data) {
+    var isDbToFile = _dbcDirection === 'db-to-file';
+    var cards = [
+      { label: isDbToFile ? 'Source Rows' : 'Actual Rows', value: isDbToFile ? data.db_rows_extracted : data.total_rows_file2, color: '' },
+      { label: isDbToFile ? 'Actual Rows' : 'Source Rows', value: isDbToFile ? data.total_rows_file2  : data.db_rows_extracted, color: '' },
+      { label: 'Matching',       value: data.matching_rows, color: 'green' },
+      { label: 'Differences',    value: data.differences,   color: 'amber' },
+      { label: 'Only in Source', value: isDbToFile ? data.only_in_file1 : data.only_in_file2, color: 'red' },
+      { label: 'Only in Actual', value: isDbToFile ? data.only_in_file2 : data.only_in_file1, color: 'red' },
+    ];
+    metricsEl.textContent = '';
+    cards.forEach(function(c) {
+      var card  = document.createElement('div');
+      card.className = 'dbc-metric-card';
+      var val   = document.createElement('div');
+      val.className  = 'dbc-metric-value' + (c.color ? ' ' + c.color : '');
+      val.textContent = c.value != null ? c.value.toLocaleString() : '\u2014';
+      var lbl   = document.createElement('div');
+      lbl.className  = 'dbc-metric-label';
+      lbl.textContent = c.label;
+      card.appendChild(val);
+      card.appendChild(lbl);
+      metricsEl.appendChild(card);
+    });
+  } else if (metricsEl) {
+    metricsEl.textContent = '';
+  }
+
+  var dlRow = document.getElementById('dbcDownloadRow');
+  var dlBtn = document.getElementById('dbcDownloadDiffBtn');
+  if (dlRow && data) {
+    var hasDiff = ((data.differences || 0) + (data.only_in_file1 || 0) + (data.only_in_file2 || 0)) > 0;
+    dlRow.style.display = hasDiff ? '' : 'none';
+    if (dlBtn) {
+      if (!data.field_statistics) {
+        dlBtn.disabled    = true;
+        dlBtn.textContent = '\u26A0\uFE0F Detailed diff unavailable';
+      } else {
+        dlBtn.disabled    = false;
+        dlBtn.textContent = '\u2B07 Download Diff CSV';
+        dlBtn._fieldStatistics = data.field_statistics;
+      }
+    }
+  } else if (dlRow) {
+    dlRow.style.display = 'none';
+  }
+
+  resultsEl.style.display = '';
+}
