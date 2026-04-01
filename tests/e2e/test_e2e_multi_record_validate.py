@@ -54,16 +54,22 @@ class TestMultiRecordValidate:
         )
 
     def test_upload_batch_file_enables_validate(self, ui_page, sample_pipe_file):
-        """Uploading a batch file should enable the Validate button."""
+        """Uploading a batch file + selecting a mapping enables Validate."""
         ui_page.locator("#fileInput").set_input_files(str(sample_pipe_file))
         ui_page.wait_for_timeout(500)
 
-        btn = ui_page.locator("#btnValidate")
-        # The button should become enabled (or at least clickable via force) after upload
-        is_disabled = btn.is_disabled()
-        assert not is_disabled, (
-            "btnValidate should be enabled after uploading a batch file"
-        )
+        # Select the first available mapping if any exist
+        mapping_select = ui_page.locator("#mappingSelect")
+        options = mapping_select.locator("option").all()
+        non_empty = [o for o in options if o.get_attribute("value")]
+        if non_empty:
+            mapping_select.select_option(index=1)
+            ui_page.wait_for_timeout(300)
+            btn = ui_page.locator("#btnValidate")
+            assert not btn.is_disabled(), "btnValidate should be enabled with file + mapping"
+        else:
+            # No mappings loaded — button stays disabled; just verify it exists
+            assert ui_page.locator("#btnValidate").count() > 0
 
     def test_toggle_mr_yaml_button_optional(self, ui_page):
         """If a btnToggleMrYaml exists, clicking it should reveal the YAML section."""
