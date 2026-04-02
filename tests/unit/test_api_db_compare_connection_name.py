@@ -134,6 +134,9 @@ class TestDbCompareConnectionName:
                 "src.api.routers.files.compare_db_to_file",
                 return_value=_MOCK_RESULT,
             ) as mock_svc,
+            patch(
+                "src.api.routers.files.get_named_connections",
+            ) as mock_named,
         ):
             resp = client.post(
                 "/api/v1/files/db-compare",
@@ -145,6 +148,7 @@ class TestDbCompareConnectionName:
         assert resp.status_code == 200
         # No connection_name means get_named_connections is never called;
         # connection_override should still be None (no individual fields provided either)
+        mock_named.assert_not_called()
         call_kwargs = mock_svc.call_args.kwargs
         assert call_kwargs.get("connection_override") is None
 
