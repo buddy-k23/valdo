@@ -1964,6 +1964,33 @@ cp .env.example .env
 | `SMTP_USER` | (none) | SMTP auth username |
 | `SMTP_PASSWORD` | (none) | SMTP auth password |
 
+### Named DB Profiles (DB Compare Dropdown)
+
+Create `config/db_connections.yaml` to populate the **DB Profile** dropdown in the DB Compare tab. Each profile names an environment variable that holds the password — the password value is never stored in the file.
+
+```yaml
+connections:
+  - name: "Local Dev"
+    adapter: oracle
+    host: "localhost:1521/FREEPDB1"
+    user: "CM3INT"
+    schema: "CM3INT"
+    password_env: "ORACLE_PASSWORD"   # name of env var — never the password itself
+
+  - name: "Production"
+    adapter: oracle
+    host: "prod-db:1521/PRODPDB1"
+    user: "CM3INT"
+    schema: "CM3INT"
+    password_env: "DB_PROD_PASSWORD"
+```
+
+**Rules:**
+- `password_env` is the **name** of an environment variable — the password value is never stored in the file.
+- The file is optional. If absent, only "Custom…" appears in the DB Compare dropdown.
+- Profiles whose env var is not set show a warning in the dropdown and return an error on test/run.
+- Restart the server to pick up changes to this file.
+
 ---
 
 ## 7. CI Pipeline Integration
