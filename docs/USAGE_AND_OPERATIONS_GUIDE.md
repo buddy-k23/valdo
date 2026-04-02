@@ -1904,6 +1904,7 @@ cp .env.example .env
 | `DB_NAME` | `postgres` | Database name or SQLite file path (used when `DB_ADAPTER=postgresql` or `sqlite`) |
 | `DB_USER` | `postgres` | PostgreSQL username (used when `DB_ADAPTER=postgresql`) |
 | `DB_PASSWORD` | (none) | PostgreSQL password (used when `DB_ADAPTER=postgresql`) |
+| `DB_CONNECTIONS` | (none) | JSON dict of named connection profiles for the DB Compare UI. Format: `{"NAME": {"host": "...", "user": "...", "password": "...", "schema": "...", "adapter": "oracle\|postgresql\|sqlite"}}` |
 | `AUDIT_LOG_PATH` | `logs/audit.jsonl` | Path to the structured JSONL audit log file |
 | `CM3_ENVIRONMENT` | `DEV` | Environment tag included in every audit event |
 | `SMTP_HOST` | (none) | SMTP server hostname for email notifications |

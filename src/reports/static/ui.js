@@ -41,6 +41,8 @@ function switchTab(name) {
   updateTabIndicator();
   // Reload trend chart whenever the Recent Runs tab is activated (#249)
   if (name === 'runs') { loadTrendChart(); loadSummaryCards(); }
+  // Load named connections whenever DB Compare tab is activated (#296)
+  if (name === 'dbcompare') { loadDbConnections(); }
 }
 
 // ===========================================================================
@@ -3316,6 +3318,81 @@ toggleAutoRefresh = function() {
 })();
 
 // ===========================================================================
+// DB Compare — named connection dropdown (#296)
+// ===========================================================================
+
+/**
+ * Fetch named DB connections from the server and populate #dbcConnectionSelect.
+ *
+ * Called each time the DB Compare tab is activated. Silently no-ops when the
+ * endpoint is unavailable (e.g. no API key configured) so the manual form
+ * continues to work.
+ */
+async function loadDbConnections() {
+  try {
+    var hdrs = window._apiKey ? { 'X-API-Key': window._apiKey } : {};
+    var resp = await fetch('/api/v1/system/db-connections', { headers: hdrs });
+    if (!resp.ok) return;
+    var connections = await resp.json();
+    var select = document.getElementById('dbcConnectionSelect');
+    if (!select) return;
+    // Preserve "— enter manually —" at index 0, remove any previously loaded options
+    while (select.options.length > 1) select.remove(1);
+    connections.forEach(function(c) {
+      var opt = new Option((c.name || '') + ' \u00B7 ' + (c.schema || ''), c.name || '');
+      // Store adapter on the option element for later use
+      opt.dataset.adapter = c.adapter || 'oracle';
+      select.add(opt);
+    });
+  } catch (_) {
+    // Silently ignore — manual form still works
+  }
+}
+
+/**
+ * Handle changes to the named connection dropdown.
+ *
+ * When a named connection is selected the manual connection chip and form are
+ * hidden. When "— enter manually —" is selected they are restored.  Updates
+ * the run button enabled-state after every change.
+ */
+function onDbcConnectionSelectChange() {
+  var select = document.getElementById('dbcConnectionSelect');
+  var chip   = document.getElementById('dbcConnChip');
+  var form   = document.getElementById('dbcConnForm');
+  var warn   = document.getElementById('dbcHttpsWarning');
+  if (!select) return;
+
+  var selectedVal = select.value;
+
+  if (selectedVal !== '') {
+    // Named connection selected — hide manual form elements
+    if (chip) chip.style.display = 'none';
+    if (form) { form.style.display = 'none'; }
+    if (warn) warn.style.display  = 'none';
+
+    // Sync adapter dropdown to the connection's adapter when available
+    var adapterSel = document.getElementById('dbcAdapterSelect');
+    var selectedOpt = select.options[select.selectedIndex];
+    if (adapterSel && selectedOpt && selectedOpt.dataset && selectedOpt.dataset.adapter) {
+      adapterSel.value = selectedOpt.dataset.adapter;
+    }
+  } else {
+    // Manual entry — restore chip visibility
+    if (chip) chip.style.display = '';
+    if (warn) warn.style.display = (location.protocol === 'http:') ? '' : 'none';
+  }
+
+  _updateDbcRunBtn();
+}
+
+// Wire up connection select change listener once DOM is ready
+(function() {
+  var connSel = document.getElementById('dbcConnectionSelect');
+  if (connSel) connSel.addEventListener('change', onDbcConnectionSelectChange);
+})();
+
+// ===========================================================================
 // DB Compare — connection chip expand/collapse + sessionStorage + db-ping
 // ===========================================================================
 (function() {
@@ -3406,8 +3483,7 @@ toggleAutoRefresh = function() {
         fd.append('db_password', (document.getElementById('dbcPassword') || {}).value || '');
         fd.append('db_schema',   (document.getElementById('dbcSchema')   || {}).value || '');
         fd.append('db_adapter',  (document.getElementById('dbcAdapter')  || {}).value || 'oracle');
-        var apiKeyEl = document.getElementById('apiKeyInput');
-        var hdrs = apiKeyEl && apiKeyEl.value ? { 'X-API-Key': apiKeyEl.value } : {};
+        var hdrs = window._apiKey ? { 'X-API-Key': window._apiKey } : {};
         var resp = await fetch('/api/v1/system/db-ping', { method: 'POST', body: fd, headers: hdrs });
         var data = await resp.json();
         if (result) {
@@ -3465,11 +3541,13 @@ var _dbcFile = null;
 function _updateDbcRunBtn() {
   var btn = document.getElementById('dbcRunBtn');
   if (!btn) return;
-  var hasFile    = !!_dbcFile;
-  var hasMapping = !!((document.getElementById('dbcMappingSelect') || {}).value);
-  var hasSql     = !!(((document.getElementById('dbcSqlEditor') || {}).value || '').trim());
-  var hasHost    = !!(window._dbcGetHost ? window._dbcGetHost() : '');
-  btn.disabled   = !(hasFile && hasMapping && hasSql && hasHost);
+  var hasFile        = !!_dbcFile;
+  var hasMapping     = !!((document.getElementById('dbcMappingSelect') || {}).value);
+  var hasSql         = !!(((document.getElementById('dbcSqlEditor') || {}).value || '').trim());
+  var hasNamedConn   = !!((document.getElementById('dbcConnectionSelect') || {}).value);
+  var hasHost        = !!(window._dbcGetHost ? window._dbcGetHost() : '');
+  var hasConn        = hasNamedConn || hasHost;
+  btn.disabled       = !(hasFile && hasMapping && hasSql && hasConn);
 }
 
 ['dbcMappingSelect', 'dbcSqlEditor', 'dbcHost'].forEach(function(id) {
@@ -3495,14 +3573,22 @@ if (_dbcRunBtn) {
       fd.append('key_columns',      (document.getElementById('dbcKeyColumns') || {}).value || '');
       fd.append('output_format',    'json');
       fd.append('apply_transforms', document.getElementById('dbcApplyTransforms').checked ? 'true' : 'false');
-      fd.append('db_host',          (document.getElementById('dbcHost')     || {}).value || '');
-      fd.append('db_user',          (document.getElementById('dbcUser')     || {}).value || '');
-      fd.append('db_password',      (document.getElementById('dbcPassword') || {}).value || '');
-      fd.append('db_schema',        (document.getElementById('dbcSchema')   || {}).value || '');
-      fd.append('db_adapter',       (document.getElementById('dbcAdapter')  || {}).value || 'oracle');
+      // Use db_adapter from the top-level adapter select (not the in-form one)
+      fd.append('db_adapter',       (document.getElementById('dbcAdapterSelect') || document.getElementById('dbcAdapter') || {}).value || 'oracle');
 
-      var apiKeyEl = document.getElementById('apiKeyInput');
-      var hdrs = apiKeyEl && apiKeyEl.value ? { 'X-API-Key': apiKeyEl.value } : {};
+      var _connName = (document.getElementById('dbcConnectionSelect') || {}).value || '';
+      if (_connName) {
+        // Named connection — send connection_name; skip individual credential fields
+        fd.append('connection_name', _connName);
+      } else {
+        // Manual entry — send individual credential fields
+        fd.append('db_host',     (document.getElementById('dbcHost')     || {}).value || '');
+        fd.append('db_user',     (document.getElementById('dbcUser')     || {}).value || '');
+        fd.append('db_password', (document.getElementById('dbcPassword') || {}).value || '');
+        fd.append('db_schema',   (document.getElementById('dbcSchema')   || {}).value || '');
+      }
+
+      var hdrs = window._apiKey ? { 'X-API-Key': window._apiKey } : {};
 
       var resp = await fetch('/api/v1/files/db-compare', { method: 'POST', body: fd, headers: hdrs });
       var data = await resp.json();

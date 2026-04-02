@@ -743,6 +743,24 @@
         <div class="dbc-panel-header" id="dbcDbPanelHeader">DATABASE SOURCE</div>
         <div class="dbc-panel-body">
 
+          <!-- DB Type dropdown -->
+          <div class="form-group" style="margin-bottom:8px">
+            <label for="dbcAdapterSelect" class="dbc-field-label">DB Type</label>
+            <select id="dbcAdapterSelect" class="select-input" style="width:100%">
+              <option value="oracle">Oracle</option>
+              <option value="postgresql">PostgreSQL</option>
+              <option value="sqlite">SQLite</option>
+            </select>
+          </div>
+
+          <!-- Named Connection dropdown -->
+          <div class="form-group" style="margin-bottom:8px">
+            <label for="dbcConnectionSelect" class="dbc-field-label">Connection</label>
+            <select id="dbcConnectionSelect" class="select-input" style="width:100%">
+              <option value="">&#x2014; enter manually &#x2014;</option>
+            </select>
+          </div>
+
           <!-- Connection chip (collapsed) -->
           <div class="dbc-conn-chip" id="dbcConnChip" tabindex="0"
                role="button" aria-expanded="false" aria-controls="dbcConnForm"

@@ -28,6 +28,7 @@ from src.api.models.file import (
 from src.parsers.format_detector import FormatDetector
 from src.services.compare_service import run_compare_service
 from src.services.db_file_compare_service import compare_db_to_file
+from src.config.db_connections import get_named_connections
 from src.services.parse_service import run_parse_service
 from src.services.validate_service import run_validate_service
 from src.services.multi_record_validate_service import run_multi_record_validate_service
@@ -575,14 +576,16 @@ async def db_compare(
     db_password: str = Form(None),
     db_schema: str = Form(None),
     db_adapter: str = Form(None),
+    connection_name: str = Form(None),
     _: str = Depends(require_api_key),
 ):
     """Extract data from a database and compare against an uploaded actual batch file.
 
     Runs the full DB extract -> temp file -> compare pipeline and returns a
     unified result containing workflow metadata and comparison statistics.
-    Optionally accepts connection override fields to use a different database
-    than the one configured via environment variables.
+    Optionally accepts a ``connection_name`` to resolve credentials server-side
+    from the ``DB_CONNECTIONS`` env var, or individual connection override fields
+    to use a different database than the one configured via environment variables.
 
     Args:
         actual_file: The actual batch file to compare against.
@@ -598,6 +601,11 @@ async def db_compare(
         db_schema: Optional database schema to override the environment default.
         db_adapter: Optional adapter name (``"oracle"``, ``"postgresql"``, or
             ``"sqlite"``) to override the environment default.
+        connection_name: Optional name of a pre-configured connection from the
+            ``DB_CONNECTIONS`` env var (e.g. ``"STAGING"``).  When provided,
+            credentials are resolved server-side and override any individual
+            ``db_host`` / ``db_user`` / ``db_password`` / ``db_schema`` /
+            ``db_adapter`` fields.
 
     Returns:
         DbCompareResult with workflow status, row counts, and diff statistics.
@@ -605,8 +613,23 @@ async def db_compare(
     Raises:
         HTTPException: 400 if ``db_adapter`` is not a recognised value.
         HTTPException: 404 if the mapping is not found.
+        HTTPException: 404 if ``connection_name`` is provided but not found.
         HTTPException: 500 if DB extraction or comparison fails.
     """
+    if connection_name is not None:
+        named = get_named_connections()
+        if connection_name not in named:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Named connection '{connection_name}' not found",
+            )
+        conn = named[connection_name]
+        db_host = conn.host
+        db_user = conn.user
+        db_password = conn.password
+        db_schema = conn.schema
+        db_adapter = conn.adapter
+
     if db_adapter is not None and db_adapter not in _ALLOWED_DB_ADAPTERS:
         raise HTTPException(
             status_code=400,
