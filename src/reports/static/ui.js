@@ -3621,6 +3621,7 @@ toggleAutoRefresh = function() {
 })();
 
 // ===========================================================================
+<<<<<<< HEAD
 // File Downloader — Search Files
 // ===========================================================================
 
@@ -3851,6 +3852,106 @@ function onDbcConnectionSelectChange() {
 })();
 
 // ===========================================================================
+// DB Compare — profile dropdown (fetch from /api/v1/system/db-profiles)
+// ===========================================================================
+(function() {
+  var _profiles = [];
+
+  function _dbcLoadProfiles() {
+    var sel = document.getElementById('dbcProfileSelect');
+    if (!sel) return;
+    var apiKeyEl = document.getElementById('apiKeyInput');
+    var hdrs = apiKeyEl && apiKeyEl.value ? { 'X-API-Key': apiKeyEl.value } : {};
+    fetch('/api/v1/system/db-profiles', { headers: hdrs })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        _profiles = data.profiles || [];
+        var toRemove = [];
+        for (var i = 0; i < sel.options.length; i++) {
+          var v = sel.options[i].value;
+          if (v !== '' && v !== '__custom__') toRemove.push(sel.options[i]);
+        }
+        toRemove.forEach(function(o) { sel.removeChild(o); });
+        var customOpt = null;
+        for (var j = 0; j < sel.options.length; j++) {
+          if (sel.options[j].value === '__custom__') { customOpt = sel.options[j]; break; }
+        }
+        _profiles.forEach(function(p) {
+          var opt = document.createElement('option');
+          opt.value = p.name;
+          opt.textContent = p.password_env_set ? p.name : (p.name + ' \u26A0\uFE0F');
+          opt.dataset.passwordEnvSet = p.password_env_set ? '1' : '0';
+          sel.insertBefore(opt, customOpt);
+        });
+      })
+      .catch(function() {});
+  }
+
+  function _dbcApplyProfileSelection() {
+    var sel    = document.getElementById('dbcProfileSelect');
+    var manual = document.getElementById('dbcManualFields');
+    var result = document.getElementById('dbcConnResult');
+    if (!sel || !manual) return;
+    var val = sel.value;
+    var isNamed = val && val !== '__custom__';
+    manual.style.display = isNamed ? 'none' : '';
+    if (result) result.style.display = 'none';
+    window._dbcRefreshChipFromProfile();
+    if (typeof _updateDbcRunBtn === 'function') _updateDbcRunBtn();
+  }
+
+  window._dbcRefreshChipFromProfile = function() {
+    var sel      = document.getElementById('dbcProfileSelect');
+    var chipText = document.getElementById('dbcConnChipText');
+    if (!chipText) return;
+    var val = sel ? sel.value : '';
+    chipText.textContent = '';
+    chipText.appendChild(document.createTextNode('\uD83D\uDD0C '));
+    var hostSpan = document.createElement('span');
+    hostSpan.className = 'dbc-chip-host';
+    if (val && val !== '__custom__') {
+      hostSpan.textContent = val;
+      chipText.appendChild(hostSpan);
+    } else {
+      var hostEl   = document.getElementById('dbcHost');
+      var schemaEl = document.getElementById('dbcSchema');
+      hostSpan.textContent = (hostEl && hostEl.value) ? hostEl.value : 'not configured';
+      chipText.appendChild(hostSpan);
+      var schema = schemaEl ? schemaEl.value : '';
+      if (schema) {
+        chipText.appendChild(document.createTextNode(' \u00B7 '));
+        var schSpan = document.createElement('span');
+        schSpan.textContent = schema;
+        chipText.appendChild(schSpan);
+      }
+    }
+  };
+
+  window._dbcGetHost = function() {
+    var sel = document.getElementById('dbcProfileSelect');
+    if (sel && sel.value && sel.value !== '__custom__') return sel.value;
+    return (document.getElementById('dbcHost') || {}).value || '';
+  };
+
+  var profileSel = document.getElementById('dbcProfileSelect');
+  if (profileSel) {
+    profileSel.addEventListener('change', _dbcApplyProfileSelection);
+  }
+
+  var dbcTabBtns = document.querySelectorAll('[data-tab="db-compare"], .tab-btn');
+  dbcTabBtns.forEach(function(btn) {
+    if (btn.textContent && btn.textContent.indexOf('DB Compare') !== -1) {
+      btn.addEventListener('click', function() {
+        if (_profiles.length === 0) _dbcLoadProfiles();
+      });
+    }
+  });
+
+  window._dbcLoadProfiles = _dbcLoadProfiles;
+  window._dbcApplyProfileSelection = _dbcApplyProfileSelection;
+})();
+
+// ===========================================================================
 // DB Compare — connection chip expand/collapse + sessionStorage + db-ping
 // ===========================================================================
 (function() {
@@ -3936,12 +4037,30 @@ function onDbcConnectionSelectChange() {
       if (result) result.style.display = 'none';
       try {
         var fd = new FormData();
-        fd.append('db_host',     (document.getElementById('dbcHost')     || {}).value || '');
-        fd.append('db_user',     (document.getElementById('dbcUser')     || {}).value || '');
-        fd.append('db_password', (document.getElementById('dbcPassword') || {}).value || '');
-        fd.append('db_schema',   (document.getElementById('dbcSchema')   || {}).value || '');
-        fd.append('db_adapter',  (document.getElementById('dbcAdapter')  || {}).value || 'oracle');
-        var hdrs = window._apiKey ? { 'X-API-Key': window._apiKey } : {};
+        var profileSel = document.getElementById('dbcProfileSelect');
+        var profileVal = profileSel ? profileSel.value : '';
+        if (profileVal && profileVal !== '__custom__') {
+          var selOpt = profileSel.options[profileSel.selectedIndex];
+          if (selOpt && selOpt.dataset.passwordEnvSet === '0') {
+            if (result) {
+              result.style.display = '';
+              result.className = 'dbc-conn-result err';
+              result.textContent = '\u274C Password env var for this profile is not set on the server';
+            }
+            btn.disabled = false;
+            btn.textContent = '\uD83D\uDD17 Test Connection';
+            return;
+          }
+          fd.append('profile_name', profileVal);
+        } else {
+          fd.append('db_host',     (document.getElementById('dbcHost')     || {}).value || '');
+          fd.append('db_user',     (document.getElementById('dbcUser')     || {}).value || '');
+          fd.append('db_password', (document.getElementById('dbcPassword') || {}).value || '');
+          fd.append('db_schema',   (document.getElementById('dbcSchema')   || {}).value || '');
+          fd.append('db_adapter',  (document.getElementById('dbcAdapter')  || {}).value || 'oracle');
+        }
+        var apiKeyEl = document.getElementById('apiKeyInput');
+        var hdrs = apiKeyEl && apiKeyEl.value ? { 'X-API-Key': apiKeyEl.value } : {};
         var resp = await fetch('/api/v1/system/db-ping', { method: 'POST', body: fd, headers: hdrs });
         var data = await resp.json();
         if (result) {
@@ -3964,11 +4083,6 @@ function onDbcConnectionSelectChange() {
 
   // Restore session on page load
   _dbcRestoreSession();
-
-  // Expose host getter for run button enable check
-  window._dbcGetHost = function() {
-    return (document.getElementById('dbcHost') || {}).value || '';
-  };
 })();
 
 // ===========================================================================
@@ -4031,8 +4145,17 @@ if (_dbcRunBtn) {
       fd.append('key_columns',      (document.getElementById('dbcKeyColumns') || {}).value || '');
       fd.append('output_format',    'json');
       fd.append('apply_transforms', document.getElementById('dbcApplyTransforms').checked ? 'true' : 'false');
-      // Use db_adapter from the top-level adapter select (not the in-form one)
-      fd.append('db_adapter',       (document.getElementById('dbcAdapterSelect') || document.getElementById('dbcAdapter') || {}).value || 'oracle');
+      var profileSel2 = document.getElementById('dbcProfileSelect');
+      var profileVal2 = profileSel2 ? profileSel2.value : '';
+      if (profileVal2 && profileVal2 !== '__custom__') {
+        fd.append('profile_name', profileVal2);
+      } else {
+        fd.append('db_host',     (document.getElementById('dbcHost')     || {}).value || '');
+        fd.append('db_user',     (document.getElementById('dbcUser')     || {}).value || '');
+        fd.append('db_password', (document.getElementById('dbcPassword') || {}).value || '');
+        fd.append('db_schema',   (document.getElementById('dbcSchema')   || {}).value || '');
+        fd.append('db_adapter',  (document.getElementById('dbcAdapter')  || {}).value || 'oracle');
+      }
 
       var _connName = (document.getElementById('dbcConnectionSelect') || {}).value || '';
       if (_connName) {
