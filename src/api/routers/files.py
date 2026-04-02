@@ -39,6 +39,7 @@ from src.services.metrics_registry import METRICS
 from src.utils.structured_logger import get_structured_logger, log_event
 from src.validators.threshold import ThresholdEvaluator
 from src.services.drift_detector import detect_drift
+from src.services.db_profiles_service import resolve_profile
 from src.api.auth import require_api_key
 from src.services.error_extractor import extract_error_rows
 
@@ -577,6 +578,7 @@ async def db_compare(
     db_schema: str = Form(None),
     db_adapter: str = Form(None),
     connection_name: str = Form(None),
+    profile_name: str = Form(None),
     _: str = Depends(require_api_key),
 ):
     """Extract data from a database and compare against an uploaded actual batch file.
@@ -606,6 +608,9 @@ async def db_compare(
             credentials are resolved server-side and override any individual
             ``db_host`` / ``db_user`` / ``db_password`` / ``db_schema`` /
             ``db_adapter`` fields.
+        profile_name: Optional named profile from ``config/db_connections.yaml``.
+            When provided, server-side credentials are resolved and used;
+            ``db_host``/``db_user``/``db_password`` fields are ignored.
 
     Returns:
         DbCompareResult with workflow status, row counts, and diff statistics.
@@ -651,7 +656,19 @@ async def db_compare(
         shutil.copyfileobj(actual_file.file, buffer)
 
     connection_override: dict | None = None
-    if db_host or db_user or db_password or db_adapter:
+    if profile_name:
+        try:
+            prof_cfg = resolve_profile(profile_name)
+        except (KeyError, RuntimeError) as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+        connection_override = {
+            "db_host": prof_cfg.dsn,
+            "db_user": prof_cfg.user,
+            "db_password": prof_cfg.password,
+            "db_schema": prof_cfg.schema,
+            "db_adapter": prof_cfg.db_adapter,
+        }
+    elif db_host or db_user or db_password or db_adapter:
         connection_override = {
             k: v
             for k, v in {

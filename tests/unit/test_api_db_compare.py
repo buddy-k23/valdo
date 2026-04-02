@@ -182,3 +182,110 @@ class TestDbCompareResultModel:
         )
         assert result.report_url is None
         assert result.structure_errors is None
+
+
+class TestDbCompareWithProfile:
+    def test_accepts_profile_name_field(self, tmp_path: Path) -> None:
+        """profile_name form field must be accepted without 422."""
+        import json as _json
+        from unittest.mock import patch
+        from src.api.main import app
+
+        mapping_cfg = {"name": "test", "fields": [{"name": "ID"}]}
+        (tmp_path / "m.json").write_text(_json.dumps(mapping_cfg))
+
+        mock_result = {
+            "workflow": {"status": "passed", "db_rows_extracted": 0, "query_or_table": "T"},
+            "compare": {
+                "structure_compatible": True, "total_rows_file1": 0, "total_rows_file2": 0,
+                "matching_rows": 0, "only_in_file1": 0, "only_in_file2": 0, "differences": 0,
+            },
+        }
+        from src.config.db_config import DbConfig
+        profile_cfg = DbConfig(user="U", password="P", dsn="H:1/S", schema="SCH", db_adapter="oracle")
+
+        with patch("src.api.routers.files.MAPPINGS_DIR", tmp_path), \
+             patch("src.api.routers.files.compare_db_to_file", return_value=mock_result), \
+             patch("src.api.routers.files.resolve_profile", return_value=profile_cfg):
+            client = TestClient(app)
+            resp = client.post(
+                "/api/v1/files/db-compare",
+                data={
+                    "query_or_table": "SELECT 1 FROM DUAL",
+                    "mapping_id": "m",
+                    "profile_name": "Local Dev",
+                },
+                files={"actual_file": ("f.txt", b"ID\n1\n", "text/plain")},
+                headers=AUTH,
+            )
+        assert resp.status_code == 200
+
+    def test_profile_credentials_used_in_connection_override(self, tmp_path: Path) -> None:
+        """When profile_name set, connection_override must use profile credentials."""
+        import json as _json
+        from unittest.mock import patch
+        from src.api.main import app
+
+        mapping_cfg = {"name": "test", "fields": [{"name": "ID"}]}
+        (tmp_path / "m.json").write_text(_json.dumps(mapping_cfg))
+
+        mock_result = {
+            "workflow": {"status": "passed", "db_rows_extracted": 0, "query_or_table": "T"},
+            "compare": {
+                "structure_compatible": True, "total_rows_file1": 0, "total_rows_file2": 0,
+                "matching_rows": 0, "only_in_file1": 0, "only_in_file2": 0, "differences": 0,
+            },
+        }
+        from src.config.db_config import DbConfig
+        profile_cfg = DbConfig(
+            user="PROFUSER", password="PROFPW", dsn="profhost:1521/SVC",
+            schema="PROFSCH", db_adapter="oracle"
+        )
+
+        with patch("src.api.routers.files.MAPPINGS_DIR", tmp_path), \
+             patch("src.api.routers.files.compare_db_to_file", return_value=mock_result) as mock_cmp, \
+             patch("src.api.routers.files.resolve_profile", return_value=profile_cfg):
+            client = TestClient(app)
+            client.post(
+                "/api/v1/files/db-compare",
+                data={
+                    "query_or_table": "SELECT 1 FROM DUAL",
+                    "mapping_id": "m",
+                    "profile_name": "Local Dev",
+                },
+                files={"actual_file": ("f.txt", b"ID\n1\n", "text/plain")},
+                headers=AUTH,
+            )
+
+        call_kwargs = mock_cmp.call_args.kwargs
+        override = call_kwargs.get("connection_override")
+        assert override is not None
+        assert override["db_user"] == "PROFUSER"
+        assert override["db_password"] == "PROFPW"
+        assert override["db_host"] == "profhost:1521/SVC"
+        assert override["db_adapter"] == "oracle"
+
+    def test_profile_not_found_returns_500(self, tmp_path: Path) -> None:
+        import json as _json
+        from unittest.mock import patch
+        from src.api.main import app
+
+        mapping_cfg = {"name": "test", "fields": [{"name": "ID"}]}
+        (tmp_path / "m.json").write_text(_json.dumps(mapping_cfg))
+
+        with patch("src.api.routers.files.MAPPINGS_DIR", tmp_path), \
+             patch("src.api.routers.files.resolve_profile",
+                   side_effect=KeyError("Profile not found: 'Bad'")):
+            client = TestClient(app)
+            resp = client.post(
+                "/api/v1/files/db-compare",
+                data={
+                    "query_or_table": "SELECT 1 FROM DUAL",
+                    "mapping_id": "m",
+                    "profile_name": "Bad",
+                },
+                files={"actual_file": ("f.txt", b"ID\n1\n", "text/plain")},
+                headers=AUTH,
+            )
+        assert resp.status_code == 500
+        assert "Profile not found" in resp.json()["detail"]
