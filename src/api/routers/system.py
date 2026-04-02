@@ -8,8 +8,10 @@ import os
 import sys
 
 from src.api.auth import require_api_key, require_role
+from src.api.models.db_profile import DbProfile
 from src.config.db_connections import get_named_connections
 from src.database.connection import OracleConnection
+from src.services.db_profiles_service import load_profiles
 from src.services.metrics_registry import METRICS
 
 router = APIRouter()
@@ -83,6 +85,22 @@ async def list_db_connections(_=Depends(require_api_key)) -> List[dict]:
         }
         for conn in connections.values()
     ]
+
+
+@router.get("/db-profiles")
+async def get_db_profiles():
+    """Return the list of named database connection profiles.
+
+    Profiles are loaded from ``config/db_connections.yaml``.  Returns an
+    empty list when the file does not exist.  Passwords are never included
+    in the response.
+
+    Returns:
+        Dict with ``profiles`` key containing a list of
+        :class:`~src.api.models.db_profile.DbProfile` dicts.
+    """
+    profiles = load_profiles()
+    return {"profiles": [p.model_dump(by_alias=True) for p in profiles]}
 
 
 @router.post("/db-ping")
