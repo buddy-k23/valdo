@@ -911,14 +911,14 @@
 
     <div class="fd-subtabs" role="tablist">
       <button id="fdtab-browse" class="fd-subtab active" role="tab" aria-selected="true"
-              onclick="switchFdSubTab('browse')">Browse &amp; Download</button>
+              aria-controls="fdpanel-browse" onclick="switchFdSubTab('browse')">Browse &amp; Download</button>
       <button id="fdtab-search" class="fd-subtab" role="tab" aria-selected="false"
-              onclick="switchFdSubTab('search')">Search Files</button>
+              aria-controls="fdpanel-search" onclick="switchFdSubTab('search')">Search Files</button>
       <button id="fdtab-searcharch" class="fd-subtab" role="tab" aria-selected="false"
-              onclick="switchFdSubTab('searcharch')">Search Archives</button>
+              aria-controls="fdpanel-searcharch" onclick="switchFdSubTab('searcharch')">Search Archives</button>
     </div>
 
-    <div id="fdpanel-browse" class="fd-subpanel">
+    <div id="fdpanel-browse" class="fd-subpanel" role="tabpanel" aria-labelledby="fdtab-browse">
       <div class="fd-row">
         <label class="fd-label" for="fdArchivePattern">Archive pattern</label>
         <input id="fdArchivePattern" class="fd-input" type="text"
@@ -928,7 +928,7 @@
       <div id="fdBrowseResults" class="fd-results" aria-live="polite"></div>
     </div>
 
-    <div id="fdpanel-search" class="fd-subpanel fd-subpanel--hidden">
+    <div id="fdpanel-search" class="fd-subpanel fd-subpanel--hidden" role="tabpanel" aria-labelledby="fdtab-search">
       <div class="fd-row">
         <label class="fd-label" for="fdSearchFilename">Filename pattern</label>
         <input id="fdSearchFilename" class="fd-input" type="text" placeholder="e.g. *.log">
@@ -941,7 +941,7 @@
       <div id="fdSearchResults" class="fd-results" aria-live="polite"></div>
     </div>
 
-    <div id="fdpanel-searcharch" class="fd-subpanel fd-subpanel--hidden">
+    <div id="fdpanel-searcharch" class="fd-subpanel fd-subpanel--hidden" role="tabpanel" aria-labelledby="fdtab-searcharch">
       <div class="fd-row">
         <label class="fd-label" for="fdArchSearchPattern">Archive pattern</label>
         <input id="fdArchSearchPattern" class="fd-input" type="text"
