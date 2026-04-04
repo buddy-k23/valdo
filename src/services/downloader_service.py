@@ -169,3 +169,46 @@ def extract_file(archive_path: Path, inner_filename: str) -> Iterator[bytes]:
                     yield data
         return
     raise ValueError(f"Unsupported archive format: {name}")
+
+
+def search_in_files(path: Path, filename_pattern: str, search_string: str) -> SearchResult:
+    """Search *search_string* in plain files matching *filename_pattern*.
+
+    Args:
+        path: Directory to search (already validated).
+        filename_pattern: ``fnmatch`` wildcard for filenames (e.g. ``"*.log"``).
+        search_string: Literal string to find in each line.
+
+    Returns:
+        :class:`SearchResult` capped at ``_MAX_SEARCH_RESULTS`` hits.
+        When truncated and hits come from one file, ``download_ref`` is set.
+        When truncated across multiple files, ``download_ref`` is ``None`` —
+        the UI must prompt the user to use a single exact filename.
+    """
+    results: list = []
+    total = 0
+    matched_files: set = set()
+
+    for filepath in sorted(path.iterdir()):
+        if not filepath.is_file():
+            continue
+        if not fnmatch.fnmatch(filepath.name, filename_pattern):
+            continue
+        try:
+            with filepath.open("r", errors="replace") as fh:
+                for lineno, line in enumerate(fh, 1):
+                    if search_string in line:
+                        total += 1
+                        matched_files.add(filepath.name)
+                        if len(results) < _MAX_SEARCH_RESULTS:
+                            results.append(SearchHit(file=filepath.name, line=lineno, content=line.rstrip()))
+        except OSError:
+            continue
+
+    truncated = total > len(results)
+    download_ref = None
+    if truncated and len(matched_files) == 1:
+        download_ref = DownloadRef(path=str(path), filename=next(iter(matched_files)))
+
+    return SearchResult(results=results, truncated=truncated, total_matches=total,
+                        shown=len(results), download_ref=download_ref)

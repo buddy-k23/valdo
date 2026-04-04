@@ -4,7 +4,7 @@ import tarfile
 import zipfile
 import pytest
 from pathlib import Path
-from src.services.downloader_service import validate_path, browse_path, BrowseEntry, list_archive_contents, extract_file
+from src.services.downloader_service import validate_path, browse_path, BrowseEntry, list_archive_contents, extract_file, search_in_files
 
 
 def test_validate_path_accepts_allowed(tmp_path):
@@ -137,3 +137,52 @@ def test_extract_file_missing_raises_zip(tmp_path):
     arc = _make_zip(tmp_path / "a.zip", {"exists.txt": b"x"})
     with pytest.raises(FileNotFoundError):
         list(extract_file(arc, "missing.txt"))
+
+
+# ---------------------------------------------------------------------------
+# search_in_files
+# ---------------------------------------------------------------------------
+
+def test_search_files_finds_match(tmp_path):
+    (tmp_path / "errors.log").write_text("line1\nERROR here\nline3\n")
+    r = search_in_files(tmp_path, "*.log", "ERROR")
+    assert r.total_matches == 1
+    assert r.results[0].file == "errors.log"
+    assert r.results[0].line == 2
+    assert r.truncated is False
+    assert r.download_ref is None
+
+
+def test_search_files_truncates_at_50_single_file(tmp_path):
+    (tmp_path / "big.log").write_text("\n".join(f"ERROR {i}" for i in range(60)))
+    r = search_in_files(tmp_path, "*.log", "ERROR")
+    assert r.shown == 50
+    assert r.total_matches == 60
+    assert r.truncated is True
+    assert r.download_ref is not None
+    assert r.download_ref.filename == "big.log"
+    assert r.download_ref.archive is None
+
+
+def test_search_files_truncated_multi_file_no_ref(tmp_path):
+    for i in range(2):
+        (tmp_path / f"f{i}.log").write_text("\n".join(f"ERROR {j}" for j in range(30)))
+    r = search_in_files(tmp_path, "*.log", "ERROR")
+    assert r.truncated is True
+    assert r.download_ref is None
+
+
+def test_search_files_no_match(tmp_path):
+    (tmp_path / "clean.log").write_text("all fine\n")
+    r = search_in_files(tmp_path, "*.log", "ERROR")
+    assert r.total_matches == 0
+    assert r.truncated is False
+
+
+def test_search_files_pattern_filters(tmp_path):
+    (tmp_path / "errors.log").write_text("ERROR in log\n")
+    (tmp_path / "data.csv").write_text("ERROR in csv\n")
+    r = search_in_files(tmp_path, "*.log", "ERROR")
+    names = [h.file for h in r.results]
+    assert "errors.log" in names
+    assert "data.csv" not in names
