@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 import logging
 import os
 import sys
+import yaml
 from pathlib import Path
 
 # Add src to path
@@ -27,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 FILE_RETENTION_HOURS = float(os.getenv("FILE_RETENTION_HOURS", "24"))
 _UPLOADS_DIR = Path(__file__).parent.parent.parent / "uploads"
+_UI_CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "ui.yml"
+_FD_CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "file-downloader.yml"
 
 
 @asynccontextmanager
@@ -40,6 +43,21 @@ async def lifespan(app: FastAPI):
             result["deleted_count"],
             result["deleted_bytes"],
         )
+
+    # Load tab visibility config
+    if _UI_CONFIG_PATH.exists():
+        with open(_UI_CONFIG_PATH) as _f:
+            app.state.ui_config = yaml.safe_load(_f) or {}
+    else:
+        app.state.ui_config = {}
+
+    # Load file-downloader path config
+    if _FD_CONFIG_PATH.exists():
+        with open(_FD_CONFIG_PATH) as _f:
+            app.state.fd_config = yaml.safe_load(_f) or {}
+    else:
+        app.state.fd_config = {}
+
     yield
     # Shutdown: nothing needed
 
