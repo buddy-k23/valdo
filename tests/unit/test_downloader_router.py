@@ -81,3 +81,29 @@ def test_download_plain_file(tmp_path):
         )
     assert r.status_code == 200
     assert b"col1" in r.content
+
+
+def test_download_rejects_absolute_filename(tmp_path):
+    """POST /download returns 400 when filename is an absolute path."""
+    env = {"ENABLE_FILE_DOWNLOADER": "true", "API_KEYS": "k"}
+    with patch.dict(os.environ, env):
+        client = _make_client(tmp_path, env)
+        r = client.post(
+            "/api/v1/downloader/download",
+            json={"path": str(tmp_path), "filename": "/etc/passwd"},
+            headers={"X-API-Key": "k"},
+        )
+    assert r.status_code == 400
+
+
+def test_download_rejects_path_traversal_filename(tmp_path):
+    """POST /download returns 400 when filename contains path traversal."""
+    env = {"ENABLE_FILE_DOWNLOADER": "true", "API_KEYS": "k"}
+    with patch.dict(os.environ, env):
+        client = _make_client(tmp_path, env)
+        r = client.post(
+            "/api/v1/downloader/download",
+            json={"path": str(tmp_path), "filename": "../secret.txt"},
+            headers={"X-API-Key": "k"},
+        )
+    assert r.status_code == 400

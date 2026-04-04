@@ -31,6 +31,23 @@ def _allowed_paths(request: Request) -> list:
     return [p["path"] for p in getattr(request.app.state, "fd_config", {}).get("paths", [])]
 
 
+def _safe_filename(name: str) -> str:
+    """Ensure *name* is a plain filename with no path components.
+
+    Args:
+        name: User-supplied filename or archive name.
+
+    Returns:
+        The original name if safe.
+
+    Raises:
+        HTTPException: 400 if the name contains path separators or is absolute.
+    """
+    if Path(name).name != name:
+        raise HTTPException(status_code=400, detail=f"Invalid filename: {name!r}")
+    return name
+
+
 def _validate(requested: str, request: Request) -> Path:
     """Validate *requested* against the allowed paths in app state.
 
@@ -147,6 +164,7 @@ async def archive_contents(
         HTTPException: 404 if archive file is not found.
         HTTPException: 400 if archive format is unsupported.
     """
+    _safe_filename(archive)
     resolved = _validate(path, request)
     arc_path = resolved / archive
     if not arc_path.is_file():
@@ -178,6 +196,9 @@ async def download_file(
         HTTPException: 404 if file or archive is not found.
         HTTPException: 400 if archive format is unsupported.
     """
+    _safe_filename(body.filename)
+    if body.archive:
+        _safe_filename(body.archive)
     resolved = _validate(body.path, request)
     client_ip, client_host = resolve_client_info(request)
 
@@ -217,8 +238,10 @@ async def download_file(
     )
 
     download_name = Path(body.filename).name
+    # Sanitize filename for Content-Disposition header (strip chars unsafe in quoted-string)
+    safe_name = download_name.replace("\\", "").replace('"', "").replace("\r", "").replace("\n", "")
     return StreamingResponse(
         stream,
         media_type="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{download_name}"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
     )
