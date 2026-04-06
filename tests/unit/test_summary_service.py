@@ -55,9 +55,12 @@ def _make_entry(
 
 
 def _ts(days_ago: int) -> str:
-    """Return ISO timestamp string for N days ago from 2026-03-31."""
-    base = datetime(2026, 3, 31, 12, 0, 0)
-    return (base - timedelta(days=days_ago)).isoformat()
+    """Return ISO timestamp string for N days and 1 minute ago from now.
+
+    The extra minute ensures ``_ts(7)`` falls just past the 7-day cutoff
+    (into the prior-7-day window) even if the test runs near midnight.
+    """
+    return (datetime.utcnow() - timedelta(days=days_ago, minutes=1)).isoformat()
 
 
 # ---------------------------------------------------------------------------
