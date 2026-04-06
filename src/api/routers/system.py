@@ -186,8 +186,11 @@ async def db_ping(
             password=resolved_password,
             dsn=resolved_host,
         )
-        conn.connect()
-        return {"ok": True}
+        try:
+            conn.connect()
+            return {"ok": True}
+        finally:
+            conn.disconnect()
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
