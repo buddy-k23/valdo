@@ -1,5 +1,6 @@
 """Unit tests for the file downloader API router."""
 
+import importlib
 import io
 import os
 import tarfile
@@ -7,7 +8,27 @@ from importlib import reload
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
+
+
+@pytest.fixture(autouse=True)
+def _reset_app_module():
+    """Reload src.api.main after each test to prevent auth state leaking.
+
+    When a test calls reload(src.api.main) with API_KEYS set, the module
+    captures that state and remains in sys.modules. This fixture ensures
+    the module is reloaded with a clean environment after each test,
+    preventing auth state from leaking to subsequent tests.
+    """
+    yield
+    saved = {k: v for k, v in os.environ.items()}
+    os.environ.pop("API_KEYS", None)
+    os.environ.pop("ENABLE_FILE_DOWNLOADER", None)
+    import src.api.main as _m
+    importlib.reload(_m)
+    os.environ.clear()
+    os.environ.update(saved)
 
 
 def _make_client(tmp_path: Path, env: dict, allowed_path: str = None):
