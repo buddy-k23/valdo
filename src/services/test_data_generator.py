@@ -13,7 +13,9 @@ from __future__ import annotations
 import random
 import string
 from datetime import datetime, timedelta
-from typing import Optional
+
+_DATE_ANCHOR = datetime(2026, 1, 15)  # Fixed reference date — keeps generated dates deterministic across runs
+_DATE_RANGE_DAYS = 730  # +/- 2 years from anchor
 
 
 def _get_rules(field_def: dict) -> list:
@@ -89,7 +91,7 @@ def _convert_date_token(token: str) -> str:
     return result
 
 
-def _pad(value: str, length: Optional[int], data_type: str = "string") -> str:
+def _pad(value: str, length: int | None, data_type: str = "string") -> str:
     """Pad or truncate a value to the target length.
 
     Numeric types are right-justified with zero padding.
@@ -148,18 +150,19 @@ def generate_field_value(field_def: dict, rng: random.Random) -> str:
     is_date = data_type == "date" or _has_rule(field_def, "date_format")
     if is_date:
         fmt = _get_date_format(field_def)
-        today = datetime(2026, 1, 15)  # fixed anchor for determinism
-        offset_days = rng.randint(-730, 730)
-        dt = today + timedelta(days=offset_days)
+        offset_days = rng.randint(-_DATE_RANGE_DAYS, _DATE_RANGE_DAYS)
+        dt = _DATE_ANCHOR + timedelta(days=offset_days)
         val = dt.strftime(fmt)
         return _pad(val, length, "string")
 
-    # 4. numeric type
+    # 4. numeric type — generate value guaranteed to fit in length digits, then zero-pad
     if data_type in ("decimal", "integer", "numeric"):
         effective_len = length or 8
         max_val = 10 ** effective_len - 1
         val = str(rng.randint(0, max_val))
-        return _pad(val, length, data_type)
+        if length is not None:
+            val = val.rjust(length, "0")
+        return val
 
     # 5. not_empty / not_null
     if _has_rule(field_def, "not_null", "not_empty"):
@@ -185,6 +188,9 @@ def generate_row(fields: list, rng: random.Random) -> dict:
 
     Returns:
         Dict mapping field name to generated string value.
+
+    Raises:
+        KeyError: If any field dict is missing the 'name' key.
     """
     return {f["name"]: generate_field_value(f, rng) for f in fields}
 

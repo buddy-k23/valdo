@@ -111,6 +111,15 @@ class TestGenerateFieldValue:
         assert isinstance(val, str)
         assert len(val) > 0
 
+    def test_numeric_field_length_1_stays_single_digit(self):
+        """Numeric fields with length=1 must always produce a single digit, never truncated multi-digit."""
+        from src.services.test_data_generator import generate_field_value
+        field = {"name": "flag", "length": 1, "data_type": "integer"}
+        for seed in range(50):
+            val = generate_field_value(field, random.Random(seed))
+            assert len(val) == 1, f"seed={seed}: got {val!r} (len={len(val)})"
+            assert val.isdigit(), f"seed={seed}: got {val!r}"
+
 
 class TestGenerateRow:
     def test_row_has_all_fields(self, sample_mapping):
