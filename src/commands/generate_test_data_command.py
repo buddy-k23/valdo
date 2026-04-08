@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 import click
+import yaml
 
 
 # Format → delimiter mapping (fixed_width handled separately)
@@ -104,6 +105,23 @@ def run_generate_test_data_command(
             exclusion violations).
     """
     from src.services.test_data_generator import generate_file
+
+    if mapping and multi_record:
+        raise click.ClickException("--mapping and --multi-record are mutually exclusive.")
+
+    if multi_record:
+        from src.services.test_data_generator import generate_multi_record_file
+        with open(multi_record, "r", encoding="utf-8") as fh:
+            mr_config = yaml.safe_load(fh)
+        effective_rows = detail_rows or 10
+        records = generate_multi_record_file(mr_config, effective_rows, seed=seed)
+        out_path = Path(output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8", newline="\n") as fh:
+            for _rt_key, row, fields in records:
+                fh.write(_row_to_fixed_width(row, fields) + "\n")
+        click.echo(f"Generated {len(records)} multi-record rows -> {output}")
+        return
 
     if not multi_record:
         if rows is None or rows < 1:

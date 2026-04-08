@@ -6,6 +6,7 @@ from pathlib import Path
 
 import click
 import pytest
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -142,4 +143,97 @@ class TestGenerateTestDataCommand:
             run_generate_test_data_command(
                 mapping=str(ROOT / "config/mappings/customer_batch_universal.json"),
                 rows=0, output=str(tmp_path / "out.txt"), seed=42,
+            )
+
+
+class TestMultiRecordGeneration:
+    """Tests for --multi-record mode of generate-test-data."""
+
+    @pytest.fixture()
+    def multi_record_setup(self, tmp_path):
+        """Create a self-contained multi-record config with mapping files."""
+        header_mapping = {
+            "mapping_name": "test_header",
+            "source": {"format": "fixed_width"},
+            "fields": [
+                {"name": "REC_TYPE", "length": 3, "data_type": "string",
+                 "default_value": "HDR"},
+                {"name": "BATCH_ID", "length": 10, "data_type": "string",
+                 "validation_rules": [{"type": "not_null"}]},
+            ],
+        }
+        detail_mapping = {
+            "mapping_name": "test_detail",
+            "source": {"format": "fixed_width"},
+            "fields": [
+                {"name": "REC_TYPE", "length": 3, "data_type": "string",
+                 "default_value": "DTL"},
+                {"name": "AMOUNT", "length": 10, "data_type": "decimal"},
+            ],
+        }
+        trailer_mapping = {
+            "mapping_name": "test_trailer",
+            "source": {"format": "fixed_width"},
+            "fields": [
+                {"name": "REC_TYPE", "length": 3, "data_type": "string",
+                 "default_value": "TRL"},
+                {"name": "RECORD_COUNT", "length": 10, "data_type": "decimal"},
+            ],
+        }
+        hdr_path = tmp_path / "header.json"
+        dtl_path = tmp_path / "detail.json"
+        trl_path = tmp_path / "trailer.json"
+        hdr_path.write_text(json.dumps(header_mapping))
+        dtl_path.write_text(json.dumps(detail_mapping))
+        trl_path.write_text(json.dumps(trailer_mapping))
+
+        config = {
+            "discriminator": {"field": "REC_TYPE", "position": 1, "length": 3},
+            "record_types": {
+                "header": {"match": "HDR", "mapping": str(hdr_path), "expect": "exactly_one"},
+                "detail": {"match": "DTL", "mapping": str(dtl_path), "expect": "at_least_one"},
+                "trailer": {"match": "TRL", "mapping": str(trl_path), "expect": "exactly_one"},
+            },
+            "cross_type_rules": [],
+            "default_action": "warn",
+        }
+        yaml_path = tmp_path / "multi.yaml"
+        yaml_path.write_text(yaml.dump(config))
+        return yaml_path, tmp_path
+
+    def test_multi_record_structure(self, multi_record_setup, tmp_path):
+        """First row is header, last is trailer, middle are details."""
+        from src.commands.generate_test_data_command import run_generate_test_data_command
+        yaml_path, _ = multi_record_setup
+        out = tmp_path / "mr.txt"
+        run_generate_test_data_command(
+            mapping=None, multi_record=str(yaml_path),
+            detail_rows=5, rows=None, output=str(out), seed=42,
+        )
+        lines = out.read_text().splitlines()
+        assert len(lines) == 7  # 1 header + 5 detail + 1 trailer
+        assert lines[0][:3] == "HDR"
+        assert lines[-1][:3] == "TRL"
+        for line in lines[1:-1]:
+            assert line[:3] == "DTL"
+
+    def test_multi_record_detail_rows_controls_count(self, multi_record_setup, tmp_path):
+        from src.commands.generate_test_data_command import run_generate_test_data_command
+        yaml_path, _ = multi_record_setup
+        out = tmp_path / "mr.txt"
+        run_generate_test_data_command(
+            mapping=None, multi_record=str(yaml_path),
+            detail_rows=20, rows=None, output=str(out), seed=42,
+        )
+        lines = out.read_text().splitlines()
+        assert len(lines) == 22  # 1 + 20 + 1
+
+    def test_mapping_and_multi_record_mutually_exclusive(self, multi_record_setup, tmp_path):
+        from src.commands.generate_test_data_command import run_generate_test_data_command
+        yaml_path, _ = multi_record_setup
+        with pytest.raises((SystemExit, click.ClickException, ValueError)):
+            run_generate_test_data_command(
+                mapping=str(ROOT / "config/mappings/customer_batch_universal.json"),
+                multi_record=str(yaml_path),
+                detail_rows=5, rows=10, output=str(tmp_path / "out.txt"), seed=42,
             )

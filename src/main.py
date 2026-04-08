@@ -1106,7 +1106,11 @@ def detect_drift(file, mapping, output, mappings_dir):
               help='Random seed for reproducibility')
 @click.option('--inject-errors', 'inject_errors_json', default=None, type=str,
               help="JSON dict of error injections e.g. '{\"blank_required\": 5}'")
-def generate_test_data(mapping, rows, output, seed, inject_errors_json):
+@click.option('--multi-record', 'multi_record', default=None, type=click.Path(exists=True),
+              help='Multi-record YAML config (mutually exclusive with --mapping)')
+@click.option('--detail-rows', 'detail_rows', default=None, type=int,
+              help='Number of detail rows in multi-record mode (default: 10)')
+def generate_test_data(mapping, rows, output, seed, inject_errors_json, multi_record, detail_rows):
     """Generate synthetic test data files from a mapping definition."""
     try:
         from src.commands.generate_test_data_command import run_generate_test_data_command
@@ -1115,7 +1119,7 @@ def generate_test_data(mapping, rows, output, seed, inject_errors_json):
             inject = json.loads(inject_errors_json)
         run_generate_test_data_command(
             mapping=mapping, rows=rows, output=output, seed=seed,
-            inject_errors=inject,
+            inject_errors=inject, multi_record=multi_record, detail_rows=detail_rows,
         )
     except click.ClickException:
         raise

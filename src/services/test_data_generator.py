@@ -8,10 +8,12 @@ Functions:
     generate_row: One row as {field_name: value} for all fields.
     generate_file: Multiple rows from a full mapping dict.
     inject_errors: Inject controlled errors into generated rows.
+    generate_multi_record_file: Multi-record file from a multi-record YAML config dict.
 """
 from __future__ import annotations
 
 import copy
+import json
 import random
 import re
 import string
@@ -369,3 +371,90 @@ def inject_errors(
             used.add(idx)
 
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Multi-record generation
+# ---------------------------------------------------------------------------
+
+
+def generate_multi_record_file(
+    config: dict,
+    detail_rows: int,
+    seed: int = 42,
+) -> list:
+    """Generate a multi-record file: 1 header + N detail rows + 1 trailer.
+
+    Each record type's mapping JSON is loaded from the path specified in
+    the config's ``record_types[key]["mapping"]`` key.
+
+    Record ordering:
+    - Record types whose key contains ``"header"`` -> emitted first (exactly once each)
+    - All other non-trailer types -> emitted ``detail_rows`` times each
+    - Record types whose key contains ``"trailer"`` -> emitted last (exactly once each)
+
+    Discriminator values are forced from ``record_types[key]["match"]`` regardless
+    of what the generator would produce for the first field.
+
+    Args:
+        config: Parsed multi-record YAML config dict. Must contain
+            ``"record_types"`` with each entry having a ``"mapping"`` path
+            and a ``"match"`` discriminator value.
+        detail_rows: Number of detail-type rows to generate.
+        seed: Random seed for reproducibility.
+
+    Returns:
+        List of ``(record_type_key, row_dict, fields_list)`` tuples in file
+        order: ``[("header", {...}, [...]), ("detail", {...}, [...]), ...,
+        ("trailer", {...}, [...])]``.
+    """
+    rng = random.Random(seed)
+    record_types = config.get("record_types", {})
+
+    header_keys = [k for k in record_types if "header" in k.lower()]
+    trailer_keys = [k for k in record_types if "trailer" in k.lower()]
+    detail_keys = [k for k in record_types if k not in header_keys and k not in trailer_keys]
+
+    def _load_mapping(rt_config: dict) -> dict:
+        with open(rt_config["mapping"], "r", encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def _make_typed_row(rt_key: str, rt_config: dict) -> tuple:
+        mapping = _load_mapping(rt_config)
+        fields = mapping.get("fields", [])
+        row = generate_row(fields, rng)
+        # Force discriminator value (first field = record type marker)
+        disc_match = rt_config.get("match", "")
+        if disc_match and fields:
+            disc_field = fields[0]["name"]
+            length = fields[0].get("length")
+            row[disc_field] = _pad(disc_match, int(length) if length else None, "string")
+        return (rt_key, row, fields)
+
+    results: list = []
+
+    for key in header_keys:
+        results.append(_make_typed_row(key, record_types[key]))
+
+    for key in detail_keys:
+        for _ in range(detail_rows):
+            results.append(_make_typed_row(key, record_types[key]))
+
+    for key in trailer_keys:
+        rt_config = record_types[key]
+        mapping = _load_mapping(rt_config)
+        fields = mapping.get("fields", [])
+        row = generate_row(fields, rng)
+        disc_match = rt_config.get("match", "")
+        if disc_match and fields:
+            disc_field = fields[0]["name"]
+            length = fields[0].get("length")
+            row[disc_field] = _pad(disc_match, int(length) if length else None, "string")
+        # Auto-populate RECORD_COUNT if present
+        for field in fields:
+            if "count" in field["name"].lower():
+                length = field.get("length")
+                row[field["name"]] = _pad(str(detail_rows), int(length) if length else None, "decimal")
+        results.append((key, row, fields))
+
+    return results

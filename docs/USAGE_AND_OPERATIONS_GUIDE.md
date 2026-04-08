@@ -19,10 +19,11 @@ across CLI, Web UI, REST API, and CI/CD environments.
 8. [Database Integration](#8-database-integration)
 9. [ETL Pipeline Testing](#9-etl-pipeline-testing)
 10. [Data Masking](#10-data-masking)
-11. [AI Prompt Library](#11-ai-prompt-library)
-12. [Operations Guide](#12-operations-guide)
-13. [FAQ](#13-faq)
-14. [Troubleshooting](#14-troubleshooting)
+11. [Synthetic Test Data Generation](#11-synthetic-test-data-generation)
+12. [AI Prompt Library](#12-ai-prompt-library)
+13. [Operations Guide](#13-operations-guide)
+14. [FAQ](#14-faq)
+15. [Troubleshooting](#15-troubleshooting)
 
 ---
 
@@ -3186,7 +3187,93 @@ transaction file).
 
 ---
 
-## 11. AI Prompt Library
+## 11. Synthetic Test Data Generation
+
+Generate synthetic batch files conforming to a mapping schema — for testing
+validation pipelines without real data.
+
+### Basic Usage
+
+```bash
+# Pipe-delimited file (1000 rows)
+valdo generate-test-data \
+  --mapping config/mappings/customer_batch_universal.json \
+  --rows 1000 \
+  --output data/test/synthetic_customers.txt \
+  --seed 42
+
+# Fixed-width file
+valdo generate-test-data \
+  --mapping config/mappings/p327_universal.json \
+  --rows 500 \
+  --output data/test/synthetic_p327.txt
+```
+
+### Field Value Generation
+
+| Condition (checked in order) | Generated Value |
+|---|---|
+| `default_value` set | Use default, padded to field length |
+| `valid_values` non-empty | Random choice from the list |
+| `data_type` is `date` or `date_format` rule | Random date ±2 years in declared format |
+| `data_type` is `decimal` or `integer` | Random integer, zero-padded to field length |
+| `required` or `not_null` rule | Random alphanumeric (at least 1 char) |
+| else | Random alphanumeric padded to field length |
+
+### Error Injection
+
+Inject controlled errors for negative testing:
+
+```bash
+valdo generate-test-data \
+  --mapping config/mappings/customer_batch_universal.json \
+  --rows 1000 \
+  --inject-errors '{"blank_required": 5, "invalid_date": 10, "duplicate_key": 3}' \
+  --output data/test/with_errors.txt
+```
+
+| Error Type | Effect |
+|---|---|
+| `blank_required` | Blanks a required field in N rows |
+| `invalid_date` | Replaces date field with `99999999` in N rows |
+| `duplicate_key` | Copies row 1's key value into N other rows |
+| `invalid_value` | Replaces a `valid_values` field with `ZZZZ` in N rows |
+| `wrong_length` | Appends an extra character in N rows (fixed-width only) |
+
+### Multi-Record Mode
+
+Generate a multi-record file (header + detail rows + trailer) from a
+multi-record YAML config:
+
+```bash
+valdo generate-test-data \
+  --multi-record config/multi-record/ATOCTRAN.yaml \
+  --detail-rows 500 \
+  --output data/test/multi_record.txt \
+  --seed 42
+```
+
+`--multi-record` and `--mapping` are mutually exclusive. The generator
+emits exactly one row per header-type record, `--detail-rows` rows per
+detail-type record, and exactly one row per trailer-type record.
+Discriminator values (e.g. `HDR`, `DTL`, `TRL`) are forced from the
+`match` field in the config regardless of field defaults.
+
+### Options Reference
+
+| Flag | Default | Description |
+|---|---|---|
+| `--mapping` / `-m` | — | Mapping JSON file |
+| `--rows` / `-n` | — | Number of rows (required in mapping mode) |
+| `--output` / `-o` | — | Output file path (required) |
+| `--seed` / `-s` | 42 | Random seed for reproducibility |
+| `--inject-errors` | — | JSON dict of error injections |
+| `--multi-record` | — | Multi-record YAML config |
+| `--detail-rows` | 10 | Detail rows in multi-record mode |
+
+---
+
+## 12. AI Prompt Library
 
 Valdo includes a set of reusable LLM prompts in the `prompts/` directory that
 help teams generate mapping and rules CSV templates from specification
@@ -3237,7 +3324,7 @@ For full details, see `prompts/README.md`.
 
 ---
 
-## 12. Operations Guide
+## 13. Operations Guide
 
 ### Docker Deployment
 
@@ -3430,7 +3517,7 @@ Control retention with `FILE_RETENTION_HOURS` (default: 24 hours).
 
 ---
 
-## 13. FAQ
+## 14. FAQ
 
 ### What file formats does Valdo support?
 
@@ -3528,7 +3615,7 @@ failed and why, open the full HTML or JSON report.
 
 ---
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 ### Common Errors
 
