@@ -268,6 +268,14 @@ def run_validate_command(
     if mapping_config and parser_class == FixedWidthParser:
         field_specs = _build_fixed_width_field_specs(mapping_config.get('fields', []))
         parser = FixedWidthParser(file, field_specs)
+    elif mapping_config and mapping_config.get('fields'):
+        # Pass field names to delimited parsers so schema validation works correctly
+        from src.parsers.pipe_delimited_parser import PipeDelimitedParser
+        if parser_class == PipeDelimitedParser:
+            columns = [f['name'] for f in mapping_config['fields']]
+            parser = PipeDelimitedParser(file, columns=columns)
+        else:
+            parser = parser_class(file)
     else:
         parser = parser_class(file)
 
