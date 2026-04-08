@@ -1,9 +1,15 @@
-"""JSON-backed rolling baseline store for per-suite quality metrics.
+"""Baseline store for per-suite quality metrics with JSON + DB persistence.
 
 Baselines are persisted to ``reports/baselines.json`` using the same
 read-modify-write pattern as ``reports/run_history.json``.  Each suite
 maintains a rolling window of its last 10 runs; averages are recomputed
 on every call to :func:`update_baseline`.
+
+When a SQLAlchemy engine is available (via
+:func:`~src.database.engine.get_engine`) each operation is also mirrored
+to the ``CM3_BASELINES`` database table.  DB calls are always wrapped in
+``try/except`` so the JSON fallback is never bypassed — callers are never
+broken by an absent or misconfigured database.
 
 Storage format (``reports/baselines.json``)::
 
@@ -29,9 +35,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
+
+from sqlalchemy import text
+
+from src.database.engine import get_engine, get_schema_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +153,151 @@ def _recompute_baseline(suite_name: str, history: list[dict[str, Any]]) -> dict[
 
 
 # ---------------------------------------------------------------------------
+# Private DB helpers
+# ---------------------------------------------------------------------------
+
+
+def _qualified(schema: str, table: str) -> str:
+    """Return a schema-qualified table identifier.
+
+    Args:
+        schema: Schema name with optional trailing dot (e.g. ``'CM3INT.'``).
+            Pass ``''`` for SQLite (no schema).
+        table: Unqualified table name.
+
+    Returns:
+        ``'schema.TABLE'`` when schema is non-empty, otherwise ``'TABLE'``.
+    """
+    clean = schema.rstrip(".")
+    return f"{clean}.{table}" if clean else table
+
+
+def _db_upsert_baseline(suite_name: str, baseline: dict[str, Any]) -> None:
+    """Upsert a baseline row into CM3_BASELINES.
+
+    Uses INSERT OR REPLACE for SQLite and a SELECT-then-INSERT-or-UPDATE
+    strategy for Oracle/PostgreSQL so that a single primary key row is
+    maintained per suite.  All errors are logged as warnings; callers are
+    never broken.
+
+    Args:
+        suite_name: Primary key identifying the suite.
+        baseline: Baseline dict to serialise as the row payload.
+    """
+    try:
+        engine = get_engine()
+        schema = get_schema_prefix()
+        table = _qualified(schema, "CM3_BASELINES")
+        payload = json.dumps(baseline)
+        recorded_at = datetime.utcnow()
+
+        adapter = os.getenv("DB_ADAPTER", "oracle").lower()
+
+        with engine.connect() as conn:
+            if adapter == "sqlite":
+                conn.execute(
+                    text(
+                        f"INSERT OR REPLACE INTO {table} "
+                        "(suite_name, recorded_at, payload) "
+                        "VALUES (:suite_name, :recorded_at, :payload)"
+                    ),
+                    {
+                        "suite_name": suite_name,
+                        "recorded_at": recorded_at,
+                        "payload": payload,
+                    },
+                )
+            else:
+                # Generic strategy: SELECT then INSERT or UPDATE
+                row = conn.execute(
+                    text(
+                        f"SELECT suite_name FROM {table} "
+                        "WHERE suite_name = :suite_name"
+                    ),
+                    {"suite_name": suite_name},
+                ).fetchone()
+                if row is None:
+                    conn.execute(
+                        text(
+                            f"INSERT INTO {table} "
+                            "(suite_name, recorded_at, payload) "
+                            "VALUES (:suite_name, :recorded_at, :payload)"
+                        ),
+                        {
+                            "suite_name": suite_name,
+                            "recorded_at": recorded_at,
+                            "payload": payload,
+                        },
+                    )
+                else:
+                    conn.execute(
+                        text(
+                            f"UPDATE {table} "
+                            "SET recorded_at = :recorded_at, payload = :payload "
+                            "WHERE suite_name = :suite_name"
+                        ),
+                        {
+                            "suite_name": suite_name,
+                            "recorded_at": recorded_at,
+                            "payload": payload,
+                        },
+                    )
+            conn.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("CM3_BASELINES DB write failed (JSON fallback still written): %s", exc)
+
+
+def _db_fetch_baseline(suite_name: str) -> Optional[dict[str, Any]]:
+    """Fetch a baseline row from CM3_BASELINES by suite name.
+
+    Args:
+        suite_name: Suite name to look up.
+
+    Returns:
+        Parsed baseline dict, or ``None`` when the row is absent or the DB
+        is unavailable.
+    """
+    try:
+        engine = get_engine()
+        schema = get_schema_prefix()
+        table = _qualified(schema, "CM3_BASELINES")
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    f"SELECT payload FROM {table} "
+                    "WHERE suite_name = :suite_name"
+                ),
+                {"suite_name": suite_name},
+            ).fetchone()
+        if row is None:
+            return None
+        return json.loads(row["payload"])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("CM3_BASELINES DB read failed (falling back to JSON): %s", exc)
+        return None
+
+
+def _db_fetch_all_baselines() -> Optional[list[dict[str, Any]]]:
+    """Fetch all baseline rows from CM3_BASELINES.
+
+    Returns:
+        List of parsed baseline dicts, or ``None`` when the DB is unavailable.
+    """
+    try:
+        engine = get_engine()
+        schema = get_schema_prefix()
+        table = _qualified(schema, "CM3_BASELINES")
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text(f"SELECT suite_name, payload FROM {table}")
+            ).fetchall()
+        return [json.loads(row["payload"]) for row in rows]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("CM3_BASELINES DB list failed (falling back to JSON): %s", exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -201,6 +357,9 @@ def update_baseline(suite_name: str, result: dict[str, Any]) -> dict[str, Any]:
     store[suite_name] = {"baseline": baseline, "history": history}
     _save_store(path, store)
 
+    # Mirror to DB (best-effort — never breaks callers)
+    _db_upsert_baseline(suite_name, baseline)
+
     return baseline
 
 
@@ -215,6 +374,11 @@ def get_baseline(suite_name: str) -> Optional[dict[str, Any]]:
         avg_error_rate, sample_size, updated_at; or ``None`` if no baseline
         has been recorded for this suite yet.
     """
+    # Try DB first; fall back to JSON when DB is unavailable or returns nothing
+    db_result = _db_fetch_baseline(suite_name)
+    if db_result is not None:
+        return db_result
+
     path = _BASELINES_PATH
     store = _load_store(path)
     record = store.get(suite_name)
@@ -230,6 +394,11 @@ def list_baselines() -> list[dict[str, Any]]:
         List of baseline dicts (see :func:`get_baseline`), sorted by
         ``suite_name``.  Returns an empty list when no baselines exist.
     """
+    # Try DB first; fall back to JSON when DB is unavailable
+    db_result = _db_fetch_all_baselines()
+    if db_result is not None:
+        return sorted(db_result, key=lambda b: b.get("suite_name", ""))
+
     path = _BASELINES_PATH
     store = _load_store(path)
     baselines = [
