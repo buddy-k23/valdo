@@ -71,6 +71,18 @@ function initTabVisibility() {
           if (panel) panel.style.display = 'none';
         }
       });
+      // If the default active tab was hidden, switch to the first remaining visible tab.
+      // This handles configs where quick=false and only e.g. downloader=true.
+      var activeBtn = document.querySelector('nav.tabs button.active');
+      if (activeBtn && activeBtn.style.display === 'none') {
+        var allBtns = document.querySelectorAll('nav.tabs button[id^="tab-"]');
+        for (var i = 0; i < allBtns.length; i++) {
+          if (allBtns[i].style.display !== 'none') {
+            switchTab(allBtns[i].id.replace('tab-', ''));
+            break;
+          }
+        }
+      }
     })
     .catch(function() { /* fail open — config error must not break the app */ });
 }
