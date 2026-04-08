@@ -4,7 +4,11 @@ import tarfile
 import zipfile
 import pytest
 from pathlib import Path
-from src.services.downloader_service import validate_path, browse_path, BrowseEntry, list_archive_contents, extract_file, search_in_files, search_in_archives, _safe_inner_path
+from src.services.downloader_service import (
+    validate_path, browse_path, BrowseEntry, list_archive_contents,
+    extract_file, search_in_files, search_in_archives,
+    _safe_inner_path, _GREP_AVAILABLE, _grep_search_file,
+)
 
 
 def test_validate_path_accepts_allowed(tmp_path):
@@ -193,7 +197,9 @@ def test_search_files_truncates_at_50_single_file(tmp_path):
     (tmp_path / "big.log").write_text("\n".join(f"ERROR {i}" for i in range(60)))
     r = search_in_files(tmp_path, "*.log", "ERROR")
     assert r.shown == 50
-    assert r.total_matches == 60
+    # grep path caps total at 51 (via -m), Python path returns full count (60);
+    # either way total_matches must be > 50 to flag truncation
+    assert r.total_matches > 50
     assert r.truncated is True
     assert r.download_ref is not None
     assert r.download_ref.filename == "big.log"
@@ -358,3 +364,105 @@ def test_extract_file_rejects_absolute_path(tmp_path):
     arc = _make_targz(tmp_path / "a.tar.gz", {"safe.txt": b"x"})
     with pytest.raises(ValueError, match="Unsafe archive inner path"):
         list(extract_file(arc, "/etc/shadow"))
+
+
+# ---------------------------------------------------------------------------
+# _grep_search_file — security tests (run regardless of _GREP_AVAILABLE)
+# ---------------------------------------------------------------------------
+
+def test_grep_search_file_shell_metacharacters(tmp_path):
+    """Shell metacharacters in search string must be treated as literals."""
+    f = tmp_path / "test.log"
+    f.write_text("safe line\n; rm -rf / line\n$(whoami) line\n")
+    hits, total = _grep_search_file(f, "; rm -rf /")
+    assert total == 1
+    assert hits[0].content == "; rm -rf / line"
+
+
+def test_grep_search_file_regex_chars_literal(tmp_path):
+    """Regex special chars must match literally (grep -F)."""
+    f = tmp_path / "test.log"
+    f.write_text("price: $100\nnormal line\n")
+    hits, total = _grep_search_file(f, "$100")
+    assert total == 1
+    assert hits[0].content == "price: $100"
+
+
+def test_grep_search_file_leading_dash_not_a_flag(tmp_path):
+    """Search strings starting with '-' must not be interpreted as grep flags."""
+    f = tmp_path / "test.log"
+    f.write_text("-v flag\nnormal\n")
+    hits, total = _grep_search_file(f, "-v")
+    assert total == 1
+
+
+def test_search_files_shell_injection_in_string(tmp_path):
+    """search_in_files must not execute injected shell commands."""
+    (tmp_path / "f.log").write_text("line with ; echo injected\n")
+    r = search_in_files(tmp_path, "*.log", "; echo injected")
+    assert r.total_matches == 1
+
+
+# ---------------------------------------------------------------------------
+# _grep_search_file — positive tests
+# ---------------------------------------------------------------------------
+
+def test_grep_search_file_finds_match(tmp_path):
+    """grep path finds match at correct line number."""
+    f = tmp_path / "errors.log"
+    f.write_text("line1\nERROR here\nline3\n")
+    hits, total = _grep_search_file(f, "ERROR")
+    assert total == 1
+    assert hits[0].line == 2
+    assert "ERROR here" in hits[0].content
+
+
+def test_grep_search_file_no_match(tmp_path):
+    """grep path returns empty results for no match."""
+    f = tmp_path / "clean.log"
+    f.write_text("all fine\n")
+    hits, total = _grep_search_file(f, "ERROR")
+    assert total == 0
+    assert hits == []
+
+
+def test_grep_search_file_truncates_at_50(tmp_path):
+    """grep path caps hits at _MAX_SEARCH_RESULTS, total reflects 51 cap."""
+    f = tmp_path / "big.log"
+    f.write_text("\n".join(f"ERROR {i}" for i in range(60)))
+    hits, total = _grep_search_file(f, "ERROR")
+    assert len(hits) == 50
+    assert total == 51  # grep capped at 51, so we know >= 51
+
+
+def test_search_files_grep_path_finds_match(tmp_path):
+    """search_in_files end-to-end with grep path (if available)."""
+    (tmp_path / "errors.log").write_text("line1\nERROR here\nline3\n")
+    r = search_in_files(tmp_path, "*.log", "ERROR")
+    assert r.total_matches == 1
+    assert r.results[0].line == 2
+    assert r.truncated is False
+
+
+# ---------------------------------------------------------------------------
+# search_in_files — fallback tests
+# ---------------------------------------------------------------------------
+
+def test_search_files_fallback_when_grep_unavailable(tmp_path, monkeypatch):
+    """Python fallback path produces same results as grep path."""
+    monkeypatch.setattr("src.services.downloader_service._GREP_AVAILABLE", False)
+    (tmp_path / "errors.log").write_text("line1\nERROR here\nline3\n")
+    r = search_in_files(tmp_path, "*.log", "ERROR")
+    assert r.total_matches == 1
+    assert r.results[0].line == 2
+    assert r.truncated is False
+
+
+def test_search_files_fallback_truncation(tmp_path, monkeypatch):
+    """Python fallback path truncates correctly at 50 results."""
+    monkeypatch.setattr("src.services.downloader_service._GREP_AVAILABLE", False)
+    (tmp_path / "big.log").write_text("\n".join(f"ERROR {i}" for i in range(60)))
+    r = search_in_files(tmp_path, "*.log", "ERROR")
+    assert r.shown == 50
+    assert r.truncated is True
+    assert r.download_ref is not None

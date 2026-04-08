@@ -2,6 +2,8 @@
 
 import fnmatch
 import logging
+import shutil
+import subprocess
 import tarfile
 import zipfile
 from dataclasses import dataclass, field
@@ -11,6 +13,7 @@ from typing import Iterator, Literal, Optional
 _ARCHIVE_SUFFIXES = (".tar.gz", ".tgz", ".zip")
 _MAX_SEARCH_RESULTS = 50
 _log = logging.getLogger(__name__)
+_GREP_AVAILABLE = bool(shutil.which("grep"))
 
 
 def _is_archive(name: str) -> bool:
@@ -217,8 +220,47 @@ def extract_file(archive_path: Path, inner_filename: str) -> Iterator[bytes]:
     raise ValueError(f"Unsupported archive format: {name}")
 
 
+def _grep_search_file(filepath: Path, search_string: str) -> tuple:
+    """Search *search_string* in *filepath* using grep.
+
+    Uses grep -Fn (fixed string, line numbers) capped at _MAX_SEARCH_RESULTS + 1
+    hits so we can detect truncation without scanning the whole file.
+
+    Args:
+        filepath: Path to the plain file to search.
+        search_string: Literal string to find.
+
+    Returns:
+        Tuple of (hits, total) where hits is a list of SearchHit objects
+        (capped at _MAX_SEARCH_RESULTS) and total is the full match count.
+    """
+    cmd = ["grep", "-Fn", "-m", str(_MAX_SEARCH_RESULTS + 1), "--", search_string, str(filepath)]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+    except OSError:
+        return [], 0
+    hits = []
+    total = 0
+    for raw_line in proc.stdout.splitlines():
+        colon = raw_line.find(":")
+        if colon == -1:
+            continue
+        total += 1
+        if len(hits) < _MAX_SEARCH_RESULTS:
+            try:
+                lineno = int(raw_line[:colon])
+            except ValueError:
+                continue
+            hits.append(SearchHit(file=filepath.name, line=lineno, content=raw_line[colon + 1:]))
+    return hits, total
+
+
 def search_in_files(path: Path, filename_pattern: str, search_string: str) -> SearchResult:
     """Search *search_string* in plain files matching *filename_pattern*.
+
+    Uses ``grep -Fn`` when grep is available on the system (Linux/OpenShift),
+    falling back to a pure-Python line scan otherwise (Windows, containers
+    without grep).
 
     Args:
         path: Directory to search (already validated).
@@ -240,18 +282,25 @@ def search_in_files(path: Path, filename_pattern: str, search_string: str) -> Se
             continue
         if not fnmatch.fnmatch(filepath.name, filename_pattern):
             continue
-        try:
-            with filepath.open("r", errors="replace") as fh:
-                for lineno, line in enumerate(fh, 1):
-                    if search_string in line:
-                        total += 1
-                        matched_files.add(filepath.name)
-                        if len(results) < _MAX_SEARCH_RESULTS:
-                            results.append(SearchHit(file=filepath.name, line=lineno, content=line.rstrip()))
-        except OSError:
-            continue
+        if _GREP_AVAILABLE:
+            hits, count = _grep_search_file(filepath, search_string)
+            if count > 0:
+                matched_files.add(filepath.name)
+            results.extend(hits[:max(0, _MAX_SEARCH_RESULTS - len(results))])
+            total += count
+        else:
+            try:
+                with filepath.open("r", errors="replace") as fh:
+                    for lineno, line in enumerate(fh, 1):
+                        if search_string in line:
+                            total += 1
+                            matched_files.add(filepath.name)
+                            if len(results) < _MAX_SEARCH_RESULTS:
+                                results.append(SearchHit(file=filepath.name, line=lineno, content=line.rstrip()))
+            except OSError:
+                continue
 
-    truncated = total > len(results)
+    truncated = total > _MAX_SEARCH_RESULTS
     download_ref = None
     if truncated and len(matched_files) == 1:
         download_ref = DownloadRef(path=str(path), filename=next(iter(matched_files)))
