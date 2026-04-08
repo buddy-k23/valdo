@@ -8,6 +8,7 @@ from src.services.downloader_service import (
     validate_path, browse_path, BrowseEntry, list_archive_contents,
     extract_file, search_in_files, search_in_archives,
     _safe_inner_path, _GREP_AVAILABLE, _grep_search_file,
+    _grep_search_archive_file,
 )
 
 
@@ -466,3 +467,115 @@ def test_search_files_fallback_truncation(tmp_path, monkeypatch):
     assert r.shown == 50
     assert r.truncated is True
     assert r.download_ref is not None
+
+
+# ---------------------------------------------------------------------------
+# _grep_search_archive_file — security tests
+# ---------------------------------------------------------------------------
+
+def test_grep_archive_search_shell_metacharacters(tmp_path):
+    """Shell metacharacters in search string treated as literals in archive search."""
+    _make_targz(tmp_path / "a.tar.gz", {"f.log": b"safe\n; rm -rf / line\n"})
+    r = search_in_archives(tmp_path, "*.tar.gz", "*.log", "; rm -rf /")
+    assert r.total_matches == 1
+    assert r.results[0].content == "; rm -rf / line"
+
+
+def test_grep_archive_search_regex_chars_literal(tmp_path):
+    """Regex special chars matched literally in archive search."""
+    _make_targz(tmp_path / "a.tar.gz", {"f.log": b"price: $100\nnormal\n"})
+    r = search_in_archives(tmp_path, "*.tar.gz", "*.log", "$100")
+    assert r.total_matches == 1
+
+
+def test_grep_archive_search_leading_dash_not_a_flag(tmp_path):
+    """Search string starting with '-' not interpreted as grep flag in archive search."""
+    _make_targz(tmp_path / "a.tar.gz", {"f.log": b"-v flag\nnormal\n"})
+    r = search_in_archives(tmp_path, "*.tar.gz", "*.log", "-v")
+    assert r.total_matches == 1
+
+
+# ---------------------------------------------------------------------------
+# _grep_search_archive_file — positive tests
+# ---------------------------------------------------------------------------
+
+def test_grep_archive_file_finds_match_targz(tmp_path):
+    """Grep archive path finds match at correct line number in tar.gz."""
+    arc = _make_targz(tmp_path / "a.tar.gz", {"f.log": b"line1\nERROR here\nline3\n"})
+    hits, total = _grep_search_archive_file(arc, "f.log", "ERROR")
+    assert total == 1
+    assert hits[0].line == 2
+    assert "ERROR here" in hits[0].content
+    assert hits[0].archive == "a.tar.gz"
+
+
+def test_grep_archive_file_finds_match_zip(tmp_path):
+    """Grep archive path finds match at correct line number in zip."""
+    arc = _make_zip(tmp_path / "a.zip", {"f.log": b"line1\nERROR here\nline3\n"})
+    hits, total = _grep_search_archive_file(arc, "f.log", "ERROR")
+    assert total == 1
+    assert hits[0].line == 2
+
+
+def test_grep_archive_file_no_match(tmp_path):
+    """Grep archive path returns empty results for no match."""
+    arc = _make_targz(tmp_path / "a.tar.gz", {"f.log": b"all fine\n"})
+    hits, total = _grep_search_archive_file(arc, "f.log", "ERROR")
+    assert total == 0
+    assert hits == []
+
+
+def test_grep_archive_file_truncates_at_50(tmp_path):
+    """Grep archive path caps hits at _MAX_SEARCH_RESULTS, total reflects 51 cap."""
+    lines = b"\n".join(f"ERROR {i}".encode() for i in range(60))
+    arc = _make_targz(tmp_path / "a.tar.gz", {"big.log": lines})
+    hits, total = _grep_search_archive_file(arc, "big.log", "ERROR")
+    assert len(hits) == 50
+    assert total == 51
+
+
+def test_search_archives_grep_path_end_to_end(tmp_path):
+    """search_in_archives end-to-end with grep path (if available)."""
+    _make_targz(tmp_path / "batch.tar.gz", {"errors.log": b"line1\nERROR bad\nline3\n"})
+    r = search_in_archives(tmp_path, "batch*.tar.gz", "*.log", "ERROR")
+    assert r.total_matches == 1
+    assert r.results[0].archive == "batch.tar.gz"
+    assert r.results[0].line == 2
+    assert r.truncated is False
+
+
+# ---------------------------------------------------------------------------
+# _grep_search_archive_file — fallback tests
+# ---------------------------------------------------------------------------
+
+def test_search_archives_fallback_when_grep_unavailable(tmp_path, monkeypatch):
+    """Python fallback path produces same results as grep path for archives."""
+    monkeypatch.setattr("src.services.downloader_service._GREP_AVAILABLE", False)
+    _make_targz(tmp_path / "batch.tar.gz", {"errors.log": b"line1\nERROR bad\nline3\n"})
+    r = search_in_archives(tmp_path, "*.tar.gz", "*.log", "ERROR")
+    assert r.total_matches == 1
+    assert r.results[0].line == 2
+    assert r.truncated is False
+
+
+def test_search_archives_fallback_truncation(tmp_path, monkeypatch):
+    """Python fallback path truncates archive search correctly at 50 results."""
+    monkeypatch.setattr("src.services.downloader_service._GREP_AVAILABLE", False)
+    lines = b"\n".join(f"ERROR {i}".encode() for i in range(60))
+    _make_targz(tmp_path / "batch.tar.gz", {"big.log": lines})
+    r = search_in_archives(tmp_path, "*.tar.gz", "*.log", "ERROR")
+    assert r.shown == 50
+    assert r.truncated is True
+    assert r.download_ref is not None
+
+
+# ---------------------------------------------------------------------------
+# _grep_search_archive_file — edge case
+# ---------------------------------------------------------------------------
+
+def test_grep_archive_file_unsupported_format_raises(tmp_path):
+    """ValueError raised for unsupported archive formats."""
+    f = tmp_path / "data.csv"
+    f.write_text("x")
+    with pytest.raises(ValueError, match="Unsupported archive format"):
+        _grep_search_archive_file(f, "inner.txt", "ERROR")

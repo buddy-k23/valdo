@@ -323,6 +323,68 @@ def _read_inner_lines(archive_path: Path, inner_filename: str) -> list:
     return content.decode("utf-8", errors="replace").splitlines()
 
 
+def _grep_search_archive_file(
+    archive_path: Path, inner_name: str, search_string: str
+) -> tuple:
+    """Search *search_string* in *inner_name* inside *archive_path* using grep.
+
+    Pipes decompression output directly into grep so the full inner file is
+    never loaded into memory. Supports .tar.gz/.tgz (via tar) and .zip (via
+    unzip).
+
+    Args:
+        archive_path: Path to the archive file.
+        inner_name: Inner file path (already validated by _safe_inner_path).
+        search_string: Literal string to find.
+
+    Returns:
+        Tuple of (hits, total) where hits is a list of SearchHit objects
+        (capped at _MAX_SEARCH_RESULTS) and total is the full match count.
+
+    Raises:
+        ValueError: If the archive format is not supported.
+    """
+    name = archive_path.name
+    if name.endswith((".tar.gz", ".tgz")):
+        decomp_cmd = ["tar", "-xzOf", str(archive_path), inner_name]
+    elif name.endswith(".zip"):
+        decomp_cmd = ["unzip", "-p", str(archive_path), inner_name]
+    else:
+        raise ValueError(f"Unsupported archive format: {name}")
+
+    grep_cmd = ["grep", "-Fn", "-m", str(_MAX_SEARCH_RESULTS + 1), "--", search_string]
+
+    try:
+        decomp = subprocess.Popen(decomp_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        grep = subprocess.Popen(
+            grep_cmd, stdin=decomp.stdout, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, text=True,
+        )
+        decomp.stdout.close()  # allow decomp to receive SIGPIPE when grep exits
+        stdout, _ = grep.communicate()
+        decomp.wait()
+    except OSError:
+        return [], 0
+
+    hits = []
+    total = 0
+    for raw_line in stdout.splitlines():
+        colon = raw_line.find(":")
+        if colon == -1:
+            continue
+        total += 1
+        if len(hits) < _MAX_SEARCH_RESULTS:
+            try:
+                lineno = int(raw_line[:colon])
+            except ValueError:
+                continue
+            hits.append(SearchHit(
+                file=inner_name, line=lineno,
+                content=raw_line[colon + 1:], archive=archive_path.name,
+            ))
+    return hits, total
+
+
 def search_in_archives(
     path: Path,
     archive_pattern: str,
@@ -330,6 +392,11 @@ def search_in_archives(
     search_string: str,
 ) -> SearchResult:
     """Search *search_string* in archive inner files matching *file_pattern*.
+
+    Uses ``grep`` piped from decompression when grep is available on the
+    system (Linux/OpenShift), avoiding loading inner files fully into memory.
+    Falls back to a pure-Python line scan otherwise (Windows, containers
+    without grep).
 
     Args:
         path: Directory to search (already validated).
@@ -360,19 +427,29 @@ def search_in_archives(
         for inner_name in inner_files:
             if not fnmatch.fnmatch(Path(inner_name).name, file_pattern):
                 continue
-            try:
-                lines = _read_inner_lines(archive_path, inner_name)
-            except Exception:
-                continue
-            for lineno, line in enumerate(lines, 1):
-                if search_string in line:
-                    total += 1
+            if _GREP_AVAILABLE:
+                try:
+                    hits, count = _grep_search_archive_file(archive_path, inner_name, search_string)
+                except Exception:
+                    continue
+                if count > 0:
                     matched_pairs.add((archive_path.name, inner_name))
-                    if len(results) < _MAX_SEARCH_RESULTS:
-                        results.append(SearchHit(file=inner_name, line=lineno,
-                                                  content=line.rstrip(), archive=archive_path.name))
+                results.extend(hits[:max(0, _MAX_SEARCH_RESULTS - len(results))])
+                total += count
+            else:
+                try:
+                    lines = _read_inner_lines(archive_path, inner_name)
+                except Exception:
+                    continue
+                for lineno, line in enumerate(lines, 1):
+                    if search_string in line:
+                        total += 1
+                        matched_pairs.add((archive_path.name, inner_name))
+                        if len(results) < _MAX_SEARCH_RESULTS:
+                            results.append(SearchHit(file=inner_name, line=lineno,
+                                                      content=line.rstrip(), archive=archive_path.name))
 
-    truncated = total > len(results)
+    truncated = total > _MAX_SEARCH_RESULTS
     download_ref = None
     if truncated and len(matched_pairs) == 1:
         arc_name, inner_name = next(iter(matched_pairs))
