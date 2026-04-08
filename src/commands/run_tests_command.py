@@ -22,6 +22,8 @@ try:
 except ImportError:  # service not yet present in all environments
     _db_write_run = None  # type: ignore[assignment]
 
+from src.services import baseline_service
+
 
 def _run_api_check_test(test: TestConfig, params: dict) -> dict:
     """Execute an HTTP API check test.
@@ -499,6 +501,39 @@ def _append_run_history(
             )
 
 
+def _build_suite_result(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build a minimal result dict for baseline_service from per-test results.
+
+    Aggregates pass/fail/total counts and the first non-None quality_score
+    across all tests so that :func:`~src.services.baseline_service.update_baseline`
+    receives the fields it expects.
+
+    Args:
+        results: Per-test result dicts returned by :func:`_run_single_test`.
+
+    Returns:
+        Dict with keys: ``pass_count``, ``total_count``, ``invalid_rows``,
+        ``total_rows``, and optionally ``quality_score``.
+    """
+    pass_count = sum(1 for r in results if r.get("status") == "PASS")
+    total_count = len(results)
+    invalid_rows = sum(r.get("error_count", 0) or 0 for r in results)
+    total_rows = sum(r.get("row_count", 0) or 0 for r in results)
+    quality_score: float | None = next(
+        (r["quality_score"] for r in results if r.get("quality_score") is not None),
+        None,
+    )
+    suite_result: dict[str, Any] = {
+        "pass_count": pass_count,
+        "total_count": total_count,
+        "invalid_rows": invalid_rows,
+        "total_rows": total_rows,
+    }
+    if quality_score is not None:
+        suite_result["quality_score"] = quality_score
+    return suite_result
+
+
 def run_suite_from_path(
     suite_path: str,
     params: dict[str, str],
@@ -587,6 +622,11 @@ def run_suite_from_path(
         archive_path=archive_path_str,
         timestamp=run_timestamp,
     )
+
+    try:
+        baseline_service.update_baseline(suite.name, _build_suite_result(results))
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("baseline update failed: %s", exc)
 
     return results
 

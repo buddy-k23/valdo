@@ -329,3 +329,244 @@ class TestJsonRoundTrip:
             "updated_at",
         }
         assert required_keys.issubset(set(baseline.keys()))
+
+
+# ---------------------------------------------------------------------------
+# Tests: DB persistence (TDD — written before implementation)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateBaselineDB:
+    """DB persistence tests for update_baseline()."""
+
+    def test_update_baseline_writes_to_db(self, tmp_path: Path):
+        """update_baseline executes an INSERT/UPSERT touching CM3_BASELINES."""
+        from unittest.mock import MagicMock, patch, call
+        from src.services.baseline_service import update_baseline
+
+        mock_conn = MagicMock()
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value = mock_conn
+
+        storage = tmp_path / "baselines.json"
+        with (
+            patch("src.services.baseline_service._BASELINES_PATH", storage),
+            patch("src.services.baseline_service.get_engine", return_value=mock_engine),
+            patch("src.services.baseline_service.get_schema_prefix", return_value=""),
+        ):
+            update_baseline("SUITE_DB", _make_result())
+
+        # At least one execute call must reference CM3_BASELINES in its SQL text
+        executed_sql = [
+            str(call_args.args[0])
+            for call_args in mock_conn.execute.call_args_list
+        ]
+        assert any("CM3_BASELINES" in s for s in executed_sql), (
+            f"Expected CM3_BASELINES in SQL, got: {executed_sql}"
+        )
+
+    def test_update_baseline_db_failure_falls_back_to_json(self, tmp_path: Path):
+        """DB failure does not raise — JSON is still written."""
+        from unittest.mock import patch
+        from src.services.baseline_service import update_baseline
+
+        storage = tmp_path / "baselines.json"
+        with (
+            patch("src.services.baseline_service._BASELINES_PATH", storage),
+            patch(
+                "src.services.baseline_service.get_engine",
+                side_effect=RuntimeError("no DB"),
+            ),
+        ):
+            # Must not raise
+            baseline = update_baseline("SUITE_DB", _make_result())
+
+        assert baseline["suite_name"] == "SUITE_DB"
+        assert storage.exists()
+
+    def test_get_baseline_reads_from_db(self, tmp_path: Path):
+        """get_baseline returns data from DB when available."""
+        import json as _json
+        from unittest.mock import MagicMock, patch
+        from src.services.baseline_service import get_baseline
+
+        payload = _json.dumps({
+            "suite_name": "SUITE_DB",
+            "pass_rate": 75.0,
+            "avg_quality_score": 85.0,
+            "avg_error_rate": 1.0,
+            "sample_size": 3,
+            "updated_at": "2026-01-01T00:00:00",
+        })
+
+        mock_row = MagicMock()
+        mock_row.__getitem__ = MagicMock(side_effect=lambda k: payload if k == "payload" else None)
+
+        mock_conn = MagicMock()
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_conn.execute.return_value.fetchone.return_value = mock_row
+
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value = mock_conn
+
+        storage = tmp_path / "baselines.json"
+        with (
+            patch("src.services.baseline_service._BASELINES_PATH", storage),
+            patch("src.services.baseline_service.get_engine", return_value=mock_engine),
+            patch("src.services.baseline_service.get_schema_prefix", return_value=""),
+        ):
+            result = get_baseline("SUITE_DB")
+
+        assert result is not None
+        assert result["pass_rate"] == 75.0
+        assert result["sample_size"] == 3
+
+    def test_get_baseline_db_failure_falls_back_to_json(self, tmp_path: Path):
+        """get_baseline falls back to JSON when DB raises."""
+        from unittest.mock import patch
+        from src.services.baseline_service import get_baseline, update_baseline
+
+        storage = tmp_path / "baselines.json"
+        # Pre-populate the JSON file (no DB)
+        with (
+            patch("src.services.baseline_service._BASELINES_PATH", storage),
+            patch(
+                "src.services.baseline_service.get_engine",
+                side_effect=RuntimeError("no DB"),
+            ),
+        ):
+            update_baseline("SUITE_DB", _make_result(pass_count=7, total_count=10))
+
+        # Now read back with DB failing — should still get JSON data
+        with (
+            patch("src.services.baseline_service._BASELINES_PATH", storage),
+            patch(
+                "src.services.baseline_service.get_engine",
+                side_effect=RuntimeError("no DB"),
+            ),
+        ):
+            result = get_baseline("SUITE_DB")
+
+        assert result is not None
+        assert result["pass_rate"] == pytest.approx(70.0)
+
+    def test_list_baselines_reads_from_db(self, tmp_path: Path):
+        """list_baselines returns suite names from DB when available."""
+        import json as _json
+        from unittest.mock import MagicMock, patch
+        from src.services.baseline_service import list_baselines
+
+        suite_a_payload = _json.dumps({
+            "suite_name": "SUITE_A",
+            "pass_rate": 80.0,
+            "avg_quality_score": None,
+            "avg_error_rate": 0.0,
+            "sample_size": 1,
+            "updated_at": "2026-01-01T00:00:00",
+        })
+        suite_b_payload = _json.dumps({
+            "suite_name": "SUITE_B",
+            "pass_rate": 60.0,
+            "avg_quality_score": None,
+            "avg_error_rate": 0.0,
+            "sample_size": 1,
+            "updated_at": "2026-01-01T00:00:00",
+        })
+
+        row_a = MagicMock()
+        row_a.__getitem__ = MagicMock(
+            side_effect=lambda k: "SUITE_A" if k == "suite_name" else suite_a_payload
+        )
+        row_b = MagicMock()
+        row_b.__getitem__ = MagicMock(
+            side_effect=lambda k: "SUITE_B" if k == "suite_name" else suite_b_payload
+        )
+
+        mock_conn = MagicMock()
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_conn.execute.return_value.fetchall.return_value = [row_a, row_b]
+
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value = mock_conn
+
+        storage = tmp_path / "baselines.json"
+        with (
+            patch("src.services.baseline_service._BASELINES_PATH", storage),
+            patch("src.services.baseline_service.get_engine", return_value=mock_engine),
+            patch("src.services.baseline_service.get_schema_prefix", return_value=""),
+        ):
+            result = list_baselines()
+
+        names = [b["suite_name"] for b in result]
+        assert "SUITE_A" in names
+        assert "SUITE_B" in names
+
+    def test_list_baselines_db_failure_falls_back_to_json(self, tmp_path: Path):
+        """list_baselines falls back to JSON when DB raises."""
+        from unittest.mock import patch
+        from src.services.baseline_service import list_baselines, update_baseline
+
+        storage = tmp_path / "baselines.json"
+        with (
+            patch("src.services.baseline_service._BASELINES_PATH", storage),
+            patch(
+                "src.services.baseline_service.get_engine",
+                side_effect=RuntimeError("no DB"),
+            ),
+        ):
+            update_baseline("SUITE_A", _make_result())
+            update_baseline("SUITE_B", _make_result())
+
+        with (
+            patch("src.services.baseline_service._BASELINES_PATH", storage),
+            patch(
+                "src.services.baseline_service.get_engine",
+                side_effect=RuntimeError("no DB"),
+            ),
+        ):
+            result = list_baselines()
+
+        names = [b["suite_name"] for b in result]
+        assert set(names) == {"SUITE_A", "SUITE_B"}
+
+
+# ---------------------------------------------------------------------------
+# Tests: run_tests_command wiring
+# ---------------------------------------------------------------------------
+
+
+class TestRunTestsBaselineWiring:
+    """Verify run_tests_command calls update_baseline after _append_run_history."""
+
+    def test_run_tests_calls_update_baseline(self, tmp_path: Path):
+        """run_tests_command (via run_suite_from_path) calls baseline_service.update_baseline."""
+        from unittest.mock import patch, MagicMock
+        import src.commands.run_tests_command as rtc
+
+        # Minimal suite YAML written to tmp_path
+        suite_yaml = tmp_path / "suite.yaml"
+        suite_yaml.write_text(
+            "name: TEST_SUITE\ntests: []\nenvironment: test\n",
+            encoding="utf-8",
+        )
+
+        with (
+            patch.object(rtc, "_append_run_history"),
+            patch("src.commands.run_tests_command.baseline_service") as mock_bs,
+            patch.object(rtc, "SuiteReporter"),
+        ):
+            rtc.run_suite_from_path(
+                suite_path=str(suite_yaml),
+                params={},
+                env="test",
+                output_dir=str(tmp_path),
+            )
+
+        mock_bs.update_baseline.assert_called_once()
+        call_args = mock_bs.update_baseline.call_args
+        assert call_args[0][0] == "TEST_SUITE"
