@@ -9,6 +9,7 @@ The public entry point is :func:`run_generate_test_data_command`.
 from __future__ import annotations
 
 import json
+import random
 from pathlib import Path
 from typing import Optional
 
@@ -77,7 +78,7 @@ def _row_to_delimited(row: dict, fields: list, delimiter: str) -> str:
 
 def run_generate_test_data_command(
     mapping: Optional[str],
-    rows: int,
+    rows: Optional[int],
     output: str,
     seed: int = 42,
     inject_errors: Optional[dict] = None,
@@ -88,7 +89,8 @@ def run_generate_test_data_command(
 
     Args:
         mapping: Path to mapping JSON file (mutually exclusive with multi_record).
-        rows: Number of data rows to generate (must be >= 1).
+        rows: Number of data rows to generate (must be >= 1 for single-mapping mode).
+            Pass None to trigger a clear error message when omitted.
         output: Output file path.
         seed: Random seed for reproducibility.
         inject_errors: Optional dict of {error_type: count} for error injection
@@ -100,12 +102,12 @@ def run_generate_test_data_command(
     Raises:
         click.ClickException: On invalid input (rows < 1, bad format, mutual
             exclusion violations).
-        ValueError: If rows < 1 (also acceptable to callers).
     """
     from src.services.test_data_generator import generate_file
 
-    if rows < 1:
-        raise click.ClickException("--rows must be at least 1.")
+    if not multi_record:
+        if rows is None or rows < 1:
+            raise click.ClickException("--rows must be at least 1.")
 
     with open(mapping, "r", encoding="utf-8") as fh:
         mapping_config = json.load(fh)
@@ -115,8 +117,7 @@ def run_generate_test_data_command(
     # Error injection (Task 3 populates this path)
     if inject_errors:
         from src.services.test_data_generator import inject_errors as do_inject
-        import random as _random
-        rng = _random.Random(seed)
+        rng = random.Random(seed)
         generated_rows = do_inject(generated_rows, inject_errors, mapping_config.get("fields", []), rng)
 
     fmt = _detect_format(mapping_config)

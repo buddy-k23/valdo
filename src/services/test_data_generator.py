@@ -11,6 +11,7 @@ Functions:
 from __future__ import annotations
 
 import random
+import re
 import string
 from datetime import datetime, timedelta
 
@@ -159,9 +160,8 @@ def generate_field_value(field_def: dict, rng: random.Random) -> str:
     if data_type in ("decimal", "integer", "numeric"):
         # Respect COBOL picture clause digit count when present (e.g. '9(12)' or 'S9(12)').
         # The digit count in the format may differ from the field length byte-width.
-        import re as _re
         fmt_str = str(field_def.get("format") or "").upper()
-        m_pic = _re.fullmatch(r"[S+]?9\((\d+)\)", fmt_str)
+        m_pic = re.fullmatch(r"[S+]?9\((\d+)\)", fmt_str)
         if m_pic:
             digit_count = int(m_pic.group(1))
         else:

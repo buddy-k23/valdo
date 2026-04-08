@@ -1098,7 +1098,7 @@ def detect_drift(file, mapping, output, mappings_dir):
 @cli.command('generate-test-data')
 @click.option('--mapping', '-m', type=click.Path(exists=True),
               help='Mapping JSON file defining the file schema')
-@click.option('--rows', '-n', default=0, type=int,
+@click.option('--rows', '-n', default=None, type=int,
               help='Number of rows to generate (must be >= 1 for single-mapping mode)')
 @click.option('--output', '-o', required=True, type=click.Path(),
               help='Output file path')
