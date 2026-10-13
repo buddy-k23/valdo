@@ -155,11 +155,12 @@ app.include_router(
     prefix="/api/v1/rules",
     tags=["Rules"]
 )
-app.include_router(api_tester_router)
+app.include_router(api_tester_router, dependencies=[Depends(require_api_key)])
 app.include_router(
     webhook_router,
     prefix="/api/v1/webhook",
-    tags=["Webhook"]
+    tags=["Webhook"],
+    dependencies=[Depends(require_api_key)],
 )
 app.include_router(
     multi_record_router,

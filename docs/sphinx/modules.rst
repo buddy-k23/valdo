@@ -441,3 +441,7 @@ Reporting & Utilities
 .. automodule:: src.utils.config_validator
    :members:
    :undoc-members:
+
+.. automodule:: src.utils.host_allowlist
+   :members:
+   :undoc-members:

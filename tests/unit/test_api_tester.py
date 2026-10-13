@@ -9,7 +9,16 @@ from fastapi.testclient import TestClient
 
 from src.api.main import app
 
-client = TestClient(app, raise_server_exceptions=False)
+_TEST_KEY = "tester-key"
+
+
+@pytest.fixture(autouse=True)
+def _api_key(monkeypatch):
+    """Configure the key the module client sends; these routes require auth."""
+    monkeypatch.setenv("API_KEYS", f"{_TEST_KEY}:admin")
+
+
+client = TestClient(app, raise_server_exceptions=False, headers={"X-API-Key": _TEST_KEY})
 
 
 class TestProxy:

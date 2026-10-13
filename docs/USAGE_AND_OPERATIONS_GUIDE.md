@@ -447,6 +447,13 @@ without leaving the browser.
    saved suite of API requests, execute them in sequence, and review the
    pass/fail result for each.
 
+**Security:** Requests are sent from the Valdo server, so the tester's own
+endpoints (`/api/v1/api-tester/*`) require an API key. To limit which hosts
+the server will call, set `API_TESTER_ALLOWED_HOSTS` to a comma-separated
+list (for example `api.internal.example.com,*.svc.example.com`; `*.` matches
+subdomains only). Requests and redirects to other hosts are rejected with 403.
+When the variable is unset, any http(s) host is allowed.
+
 **Features:**
 
 - **Method selector** -- Choose GET, POST, PUT, or DELETE from a dropdown.
@@ -1331,9 +1338,11 @@ curl -X POST http://localhost:8000/api/v1/schedules/run \
 #### POST /api/v1/webhook/validate
 
 Submit an asynchronous validation job. Optionally posts results to a callback URL.
+Requires an API key (`X-API-Key`), like the other protected endpoints.
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/webhook/validate \
+  -H "X-API-Key: $VALDO_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "file_path": "/data/batch/customers.txt",
@@ -1355,7 +1364,7 @@ curl -X POST http://localhost:8000/api/v1/webhook/validate \
 Poll for validation job status and result.
 
 ```bash
-curl http://localhost:8000/api/v1/webhook/jobs/f47ac10b-...
+curl -H "X-API-Key: $VALDO_API_KEY" http://localhost:8000/api/v1/webhook/jobs/f47ac10b-...
 ```
 
 **Response:**
@@ -1968,6 +1977,7 @@ cp .env.example .env
 | `ENVIRONMENT` | `dev` | Application environment name |
 | `LOG_LEVEL` | `INFO` | Logging level |
 | `API_KEYS` | `key-dev-abc123` | Comma-separated API keys. Optional role suffix: `key:role` |
+| `API_TESTER_ALLOWED_HOSTS` | (unset) | Comma-separated hosts the API Tester proxy may call (`*.example.com` matches subdomains). Unset allows any http(s) host |
 | `API_AUTH_DISABLED` | (unset) | `true` allows unauthenticated API access when `API_KEYS` is empty. Local development only; without it the API fails closed (503) |
 | `ALLOWED_ORIGINS` | `http://localhost,http://127.0.0.1` | CORS allowed origins (comma-separated) |
 | `FILE_RETENTION_HOURS` | `24` | Auto-delete uploaded files older than this |
@@ -2144,6 +2154,7 @@ and receive results at a callback URL:
 ```bash
 # Step 1: Submit the job
 JOB_ID=$(curl -s -X POST http://cm3-server:8000/api/v1/webhook/validate \
+  -H "X-API-Key: $VALDO_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "file_path": "/shared/data/customers.txt",
@@ -2153,7 +2164,7 @@ JOB_ID=$(curl -s -X POST http://cm3-server:8000/api/v1/webhook/validate \
   }' | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
 
 # Step 2: Poll until complete (or rely on the callback)
-curl -s http://cm3-server:8000/api/v1/webhook/jobs/$JOB_ID
+curl -s -H "X-API-Key: $VALDO_API_KEY" http://cm3-server:8000/api/v1/webhook/jobs/$JOB_ID
 ```
 
 ### Direct API Integration

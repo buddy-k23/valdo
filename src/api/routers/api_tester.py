@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import uuid
@@ -18,6 +19,7 @@ from src.api.models.api_tester import (
     SuiteCreate,
     SuiteSummary,
 )
+from src.utils.host_allowlist import is_host_allowed, parse_allowed_hosts
 
 router = APIRouter(prefix="/api/v1/api-tester", tags=["API Tester"])
 
@@ -30,6 +32,25 @@ _UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 # ---------------------------------------------------------------------------
 # Proxy
 # ---------------------------------------------------------------------------
+
+class _HostNotAllowed(Exception):
+    """A proxied request or redirect hop targets a host outside the allowlist."""
+
+
+def _host_guard(allowed: tuple[str, ...]):
+    """Build an httpx request hook that enforces ``allowed`` on every hop.
+
+    Args:
+        allowed: Hostname allowlist from ``API_TESTER_ALLOWED_HOSTS``.
+
+    Returns:
+        Async hook raising ``_HostNotAllowed`` for hosts outside the allowlist.
+    """
+    async def _check(request: httpx.Request) -> None:
+        if not is_host_allowed(request.url.host, allowed):
+            raise _HostNotAllowed(request.url.host)
+    return _check
+
 
 @router.post("/proxy", response_model=ProxyResponse)
 async def proxy_request(
@@ -48,6 +69,8 @@ async def proxy_request(
 
     Raises:
         HTTPException: 422 if config is not valid JSON.
+        HTTPException: 403 if the target host, or a redirect hop, is outside
+            ``API_TESTER_ALLOWED_HOSTS`` (when that variable is set).
         HTTPException: 502 if target host is unreachable.
         HTTPException: 504 if the request timed out.
     """
@@ -78,8 +101,16 @@ async def proxy_request(
     if not parsed.netloc:
         raise HTTPException(status_code=422, detail="Invalid URL: missing host")
 
+    allowed_hosts = parse_allowed_hosts(os.getenv("API_TESTER_ALLOWED_HOSTS"))
+    if not is_host_allowed(parsed.hostname or "", allowed_hosts):
+        raise HTTPException(status_code=403, detail=f"Host not allowed: {parsed.hostname}")
+
     try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as http:
+        async with httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=True,
+            event_hooks={"request": [_host_guard(allowed_hosts)]},
+        ) as http:
             t0 = time.monotonic()
 
             if body_type == "json":
@@ -119,6 +150,8 @@ async def proxy_request(
 
             elapsed = (time.monotonic() - t0) * 1000
 
+    except _HostNotAllowed as exc:
+        raise HTTPException(status_code=403, detail=f"Host not allowed: {exc}")
     except httpx.ConnectError as exc:
         raise HTTPException(
             status_code=502,
