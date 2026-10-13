@@ -453,7 +453,7 @@ See: `docs/GREAT_EXPECTATIONS_CHECKPOINT1.md`.
 test:
   stage: test
   script:
-    - pip install -r requirements.txt
+    - pip install -r requirements-dev.txt
     - pytest --cov=src --cov-report=xml --cov-report=term
   coverage: '/TOTAL.*\s+(\d+%)$/'
   artifacts:

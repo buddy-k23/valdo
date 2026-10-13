@@ -1,54 +1,46 @@
+# Runtime dependencies (installed by Dockerfile, setup.py, RPM and PEX builds).
+# Test, lint and build tools live in requirements-dev.txt.
+# Upper bounds stop a new major release from being pulled in untested.
+
 # Core dependencies
-pandas>=1.5.0
+pandas>=1.5.0,<4
 oracledb>=2.0.0
 
 # Database migrations
-alembic>=1.13
-sqlalchemy>=2.0
-numpy>=1.23.0
-python-dateutil>=2.8.0
+alembic>=1.13,<2
+sqlalchemy>=2.0,<3
+numpy>=1.23.0,<3
+python-dateutil>=2.8.0,<3
 
 # CLI
-click>=8.0.0
+click>=8.0.0,<9
 
 # Reporting
-Jinja2>=3.0.0
+Jinja2>=3.0.0,<4
 
 # Environment management
-python-dotenv>=0.19.0
+python-dotenv>=0.19.0,<2
 
 # Memory monitoring
-psutil>=5.9.0
+psutil>=5.9.0,<8
 
 # Excel support
-openpyxl>=3.1.0
+openpyxl>=3.1.0,<4
 
 # YAML configuration
-pyyaml>=6.0
+pyyaml>=6.0,<7
 
 # API Framework (optional - for REST API)
-fastapi>=0.109.0
-uvicorn[standard]>=0.27.0
-python-multipart>=0.0.6
+fastapi>=0.109.0,<1.0
+uvicorn[standard]>=0.27.0,<1.0
+python-multipart>=0.0.6,<1.0
 aiofiles>=23.2.1
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
-httpx>=0.28.0  # HTTP client for api_check test type and FastAPI TestClient
-
-# Testing
-pytest>=7.0.0
-pytest-cov>=4.0.0
+pydantic>=2.5.0,<3
+pydantic-settings>=2.1.0,<3
+# HTTP client for the api_check test type and the API Tester proxy
+httpx>=0.28.0,<1.0
 
 # Data quality / Great Expectations
 # NOTE: GE is not currently available for Python 3.14 in this environment.
 # Use Python 3.11/3.12 runtime for GE execution.
-great_expectations>=1.0.0; python_version < '3.14'
-
-# Development tools
-black>=22.0.0
-flake8>=5.0.0
-mypy>=0.990
-pylint>=2.15.0
-
-# PEX build tool (optional, for building PEX files)
-pex>=2.1.0
+great_expectations>=1.0.0,<2; python_version < '3.14'

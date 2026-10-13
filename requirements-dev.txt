@@ -4,6 +4,19 @@
 # Include all main requirements
 -r requirements.txt
 
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# Lint / type checks
+black>=22.0.0
+flake8>=5.0.0
+mypy>=0.990
+pylint>=2.15.0
+
+# PEX build tool (for build_pex.sh)
+pex>=2.1.0
+
 # Additional development tools
 ipython>=8.0.0
 jupyter>=1.0.0

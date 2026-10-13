@@ -18,7 +18,7 @@ echo ""
 # Check if pytest is installed
 if ! command -v pytest &> /dev/null; then
     echo -e "${RED}Error: pytest is not installed${NC}"
-    echo "Install with: pip install -r requirements.txt"
+    echo "Install with: pip install -r requirements-dev.txt"
     exit 1
 fi
 
