@@ -97,9 +97,9 @@ var _fdLinkedPath = null;  // path set by Browse→Search linking buttons
 /**
  * Return authentication headers for API requests.
  *
- * Uses the globally stored API key injected by the server into window._apiKey.
- * Returns an empty object when no key is configured so unauthenticated servers
- * continue to work without modification.
+ * Uses the API key held in window._apiKey, which ui-auth.js loads from
+ * sessionStorage (and prompts for on a 401). Returns an empty object when no
+ * key is set; ui-auth.js still attaches one to /api/ requests once entered.
  *
  * @returns {Object} Headers object, optionally containing X-API-Key.
  */

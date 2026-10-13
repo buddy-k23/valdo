@@ -14,7 +14,7 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.api.auth import require_api_key
+from src.api.auth import log_auth_mode, require_api_key
 from src.api.routers import mappings, files, system, tasks
 from src.api.routers.ui import router as ui_router
 from src.api.routers.runs import router as runs_router, schedule_router
@@ -41,6 +41,8 @@ if _UI_CONFIG_PATH.exists():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler: runs startup cleanup, then yields."""
+    log_auth_mode()
+
     # Startup: remove stale uploaded files
     result = cleanup_old_files(_UPLOADS_DIR, FILE_RETENTION_HOURS)
     if result["deleted_count"] > 0:

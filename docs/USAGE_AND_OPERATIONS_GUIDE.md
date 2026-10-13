@@ -1045,6 +1045,21 @@ roles are `tester`, `mapping_owner`, and `admin`, ordered by increasing
 privilege. Certain endpoints require a minimum role (e.g., mapping upload
 requires `mapping_owner`, metrics require `admin`).
 
+**Fails closed:** If `API_KEYS` is empty, protected endpoints return
+`503 API authentication is not configured`. For local development only, set
+`API_AUTH_DISABLED=true` to allow unauthenticated access. When `API_KEYS` is
+set, keys are always enforced and `API_AUTH_DISABLED` is ignored.
+
+```bash
+# Local development without keys
+API_AUTH_DISABLED=true uvicorn src.api.main:app --reload
+```
+
+**Web UI:** When keys are configured, the UI prompts for an API key on the
+first request that returns 401 and keeps it in the browser tab's
+`sessionStorage` until the tab is closed. All UI calls then send it as
+`X-API-Key`. The UI no longer gets access based on the `Referer` header.
+
 ### File Operations
 
 #### POST /api/v1/files/validate
@@ -1953,6 +1968,7 @@ cp .env.example .env
 | `ENVIRONMENT` | `dev` | Application environment name |
 | `LOG_LEVEL` | `INFO` | Logging level |
 | `API_KEYS` | `key-dev-abc123` | Comma-separated API keys. Optional role suffix: `key:role` |
+| `API_AUTH_DISABLED` | (unset) | `true` allows unauthenticated API access when `API_KEYS` is empty. Local development only; without it the API fails closed (503) |
 | `ALLOWED_ORIGINS` | `http://localhost,http://127.0.0.1` | CORS allowed origins (comma-separated) |
 | `FILE_RETENTION_HOURS` | `24` | Auto-delete uploaded files older than this |
 | `DB_ADAPTER` | `oracle` | Database backend: `oracle`, `postgresql`, or `sqlite` |
@@ -3772,6 +3788,7 @@ failed and why, open the full HTML or JSON report.
 
 | Error | Cause | Solution |
 |---|---|---|
+| `API authentication is not configured` (503) | `API_KEYS` is empty | Set `API_KEYS`, or `API_AUTH_DISABLED=true` for local development |
 | `Missing X-API-Key` (401) | No API key in request header | Add `-H "X-API-Key: your-key"` to curl |
 | `Invalid API key` (403) | Key not in `API_KEYS` env var | Check `.env` or environment config |
 | `Role 'mapping_owner' required` (403) | Key has insufficient role | Use a key with the correct role suffix |

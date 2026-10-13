@@ -104,6 +104,9 @@ jobs:
         run: playwright install chromium --with-deps
 
       - name: Start server
+        env:
+          # Throwaway CI server with no API_KEYS: opt out of fail-closed auth
+          API_AUTH_DISABLED: "true"
         run: |
           uvicorn src.api.main:app --host 127.0.0.1 --port 8000 &
           echo $! > /tmp/uvicorn.pid

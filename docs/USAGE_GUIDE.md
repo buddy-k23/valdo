@@ -794,6 +794,9 @@ curl -H "X-API-Key: key-dev-abc123" http://localhost:8000/api/v1/system/info
 
 `GET /api/v1/system/health` stays unauthenticated for monitoring.
 
+With no `API_KEYS` set, protected endpoints return 503. For local development
+only, start the server with `API_AUTH_DISABLED=true` to skip authentication.
+
 ### 1. System Endpoints
 
 #### Health Check

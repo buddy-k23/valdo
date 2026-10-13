@@ -33,7 +33,39 @@ def _parse_api_keys() -> Dict[str, str]:
     return keys
 
 
+def _auth_disabled() -> bool:
+    """Return True when ``API_AUTH_DISABLED`` explicitly opts out of authentication.
+
+    Only consulted when ``API_KEYS`` is empty; configured keys are always enforced.
+
+    Returns:
+        True if ``API_AUTH_DISABLED`` is ``1``, ``true`` or ``yes`` (case-insensitive).
+    """
+    return os.getenv("API_AUTH_DISABLED", "").strip().lower() in {"1", "true", "yes"}
+
+
 logger = logging.getLogger(__name__)
+
+
+def log_auth_mode() -> str:
+    """Log how the API will authenticate callers, warning on insecure setups.
+
+    Intended to be called once at application startup.
+
+    Returns:
+        ``"api_keys"``, ``"disabled"`` or ``"unconfigured"``.
+    """
+    if _parse_api_keys():
+        logger.info("API authentication: API_KEYS enforced")
+        return "api_keys"
+    if _auth_disabled():
+        logger.warning("API authentication DISABLED (API_AUTH_DISABLED=true); use for local development only")
+        return "disabled"
+    logger.warning(
+        "API_KEYS is not set: protected endpoints will return 503. "
+        "Set API_KEYS, or API_AUTH_DISABLED=true for local development."
+    )
+    return "unconfigured"
 
 
 def verify_api_key(
@@ -50,19 +82,25 @@ def verify_api_key(
         AuthContext containing key identifier and resolved role.
 
     Raises:
+        HTTPException: 503 if no API keys are configured and auth is not
+            explicitly disabled via ``API_AUTH_DISABLED``.
         HTTPException: 401 if header is missing.
         HTTPException: 403 if key is invalid.
     """
     keys = _parse_api_keys()
 
-    # If no API keys configured, allow all requests (dev mode)
+    # No keys configured: fail closed unless auth is explicitly disabled (local dev only)
     if not keys:
-        return AuthContext(key_id="noauth", role="admin")
-
-    # Allow same-origin UI requests (Referer from /ui)
-    referer = request.headers.get("referer", "")
-    if not x_api_key and "/ui" in referer:
-        return AuthContext(key_id="ui-user", role="admin")
+        if _auth_disabled():
+            return AuthContext(key_id="noauth", role="admin")
+        logger.error("api_auth_unconfigured path=%s", request.url.path)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "API authentication is not configured. Set API_KEYS, or set "
+                "API_AUTH_DISABLED=true for local development only."
+            ),
+        )
 
     if not x_api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-API-Key")

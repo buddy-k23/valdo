@@ -229,7 +229,8 @@ All configuration is loaded from the `.env` file in the project root. Copy `.env
 | `ENVIRONMENT` | `dev` | One of `dev`, `staging`, `prod`. Controls log verbosity and safety checks. |
 | `LOG_LEVEL` | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`. Use `DEBUG` when troubleshooting. |
 | `FILE_RETENTION_HOURS` | `24` | Uploaded/temp files older than this many hours are removed on startup. Default: `24`. |
-| `API_KEYS` | `key-tester:tester,key-owner:mapping_owner,key-admin:admin` | Comma-separated API keys with optional `:role` suffix (`tester`, `mapping_owner`, `admin`). |
+| `API_KEYS` | `key-tester:tester,key-owner:mapping_owner,key-admin:admin` | Comma-separated API keys with optional `:role` suffix (`tester`, `mapping_owner`, `admin`). **Required:** the API refuses protected requests (503) when this is empty. |
+| `API_AUTH_DISABLED` | (unset) | Set to `true` only on a local development machine to run without `API_KEYS`. Never set it on a shared or production server. |
 | `ALLOWED_ORIGINS` | `https://internal-dashboard.bank.com` | Comma-separated CORS allowlist for browser callers. |
 
 > **Oracle DSN format**: `hostname:port/service_name`. Example: `oracle-db.corp.local:1521/PRODDB`. This uses oracledb **thin mode** — no Oracle Instant Client libraries are required on the machine.

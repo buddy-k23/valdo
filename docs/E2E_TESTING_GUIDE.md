@@ -190,7 +190,7 @@ python3 -m src.main convert-suite \
 ### 3.1 Start the API server
 
 ```bash
-uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+API_AUTH_DISABLED=true uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload  # local dev, no API keys
 ```
 
 Or via Python:
@@ -440,5 +440,5 @@ python3 -m src.main convert-suite --input <in.xlsx> --output-dir config/test_sui
 python3 -m src.main extract --table SHAW_SRC_P327 -o data/oracle_p327.csv
 
 # API server
-uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+API_AUTH_DISABLED=true uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload  # local dev, no API keys
 ```

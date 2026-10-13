@@ -6,6 +6,16 @@ import os
 import pandas as pd
 
 
+@pytest.fixture(autouse=True)
+def _api_auth_disabled_by_default(monkeypatch):
+    """Run tests with API auth disabled unless a test configures API_KEYS.
+
+    The API fails closed when no keys are configured; tests that exercise
+    authentication set API_KEYS (or delete this variable) themselves.
+    """
+    monkeypatch.setenv("API_AUTH_DISABLED", "true")
+
+
 @pytest.fixture
 def sample_pipe_delimited_file():
     """Create a temporary pipe-delimited file."""
