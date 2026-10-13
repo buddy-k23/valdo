@@ -25,6 +25,14 @@ _RECENT_DATE = (datetime.utcnow() - timedelta(days=5)).strftime("%Y-%m-%d")
 _OLD_DATE = (datetime.utcnow() - timedelta(days=120)).strftime("%Y-%m-%d")
 
 
+def _days_ago(days: int) -> str:
+    """Return the UTC date ``days`` before today as ``YYYY-MM-DD``.
+
+    Keeps fixtures inside the trend window regardless of when the suite runs.
+    """
+    return (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+
 def _make_entry(
     suite_name: str = "MySuite",
     date_str: str = _RECENT_DATE,
@@ -68,9 +76,9 @@ class TestGetTrendFromJson:
         """3 entries on distinct days → 3 sorted buckets with correct counts."""
         monkeypatch.delenv("DB_ADAPTER", raising=False)
         history = [
-            _make_entry(date_str="2026-03-28", status="PASS"),
-            _make_entry(date_str="2026-03-29", status="FAIL"),
-            _make_entry(date_str="2026-03-30", status="PASS"),
+            _make_entry(date_str=_days_ago(3), status="PASS"),
+            _make_entry(date_str=_days_ago(2), status="FAIL"),
+            _make_entry(date_str=_days_ago(1), status="PASS"),
         ]
         with patch("src.services.trend_service._load_history", return_value=history):
             result = get_trend(days=30)
@@ -80,7 +88,7 @@ class TestGetTrendFromJson:
         dates = [b["date"] for b in result]
         assert dates == sorted(dates)
         # Spot-check first bucket (oldest)
-        assert result[0]["date"] == "2026-03-28"
+        assert result[0]["date"] == _days_ago(3)
         assert result[0]["total_runs"] == 1
         assert result[0]["pass_runs"] == 1
         assert result[0]["fail_runs"] == 0
@@ -92,9 +100,9 @@ class TestGetTrendFromJson:
         """suite='Alpha' filters out entries for other suites."""
         monkeypatch.delenv("DB_ADAPTER", raising=False)
         history = [
-            _make_entry(suite_name="Alpha", date_str="2026-03-30", status="PASS"),
-            _make_entry(suite_name="Beta",  date_str="2026-03-30", status="PASS"),
-            _make_entry(suite_name="Alpha", date_str="2026-03-29", status="FAIL"),
+            _make_entry(suite_name="Alpha", date_str=_days_ago(1), status="PASS"),
+            _make_entry(suite_name="Beta",  date_str=_days_ago(1), status="PASS"),
+            _make_entry(suite_name="Alpha", date_str=_days_ago(2), status="FAIL"),
         ]
         with patch("src.services.trend_service._load_history", return_value=history):
             result = get_trend(suite="Alpha", days=30)
@@ -120,8 +128,8 @@ class TestGetTrendFromJson:
         """When all runs fail, pass_rate is 0.0 and pass_runs is 0."""
         monkeypatch.delenv("DB_ADAPTER", raising=False)
         history = [
-            _make_entry(date_str="2026-03-30", status="FAIL"),
-            _make_entry(date_str="2026-03-30", status="FAIL"),
+            _make_entry(date_str=_days_ago(1), status="FAIL"),
+            _make_entry(date_str=_days_ago(1), status="FAIL"),
         ]
         with patch("src.services.trend_service._load_history", return_value=history):
             result = get_trend(days=30)
@@ -145,8 +153,8 @@ class TestGetTrendFromJson:
         monkeypatch.delenv("DB_ADAPTER", raising=False)
         # 1 pass, 1 fail on same day → 50.0%
         history = [
-            _make_entry(date_str="2026-03-30", status="PASS"),
-            _make_entry(date_str="2026-03-30", status="FAIL"),
+            _make_entry(date_str=_days_ago(1), status="PASS"),
+            _make_entry(date_str=_days_ago(1), status="FAIL"),
         ]
         with patch("src.services.trend_service._load_history", return_value=history):
             result = get_trend(days=30)
@@ -158,8 +166,8 @@ class TestGetTrendFromJson:
         """avg_quality_score is the mean of quality_score across bucket entries."""
         monkeypatch.delenv("DB_ADAPTER", raising=False)
         history = [
-            _make_entry(date_str="2026-03-30", status="PASS", quality_score=80.0),
-            _make_entry(date_str="2026-03-30", status="PASS", quality_score=90.0),
+            _make_entry(date_str=_days_ago(1), status="PASS", quality_score=80.0),
+            _make_entry(date_str=_days_ago(1), status="PASS", quality_score=90.0),
         ]
         with patch("src.services.trend_service._load_history", return_value=history):
             result = get_trend(days=30)
@@ -170,7 +178,7 @@ class TestGetTrendFromJson:
     def test_missing_quality_score_produces_none(self, monkeypatch):
         """avg_quality_score is None when no entries have a quality_score."""
         monkeypatch.delenv("DB_ADAPTER", raising=False)
-        history = [_make_entry(date_str="2026-03-30", status="PASS")]
+        history = [_make_entry(date_str=_days_ago(1), status="PASS")]
         with patch("src.services.trend_service._load_history", return_value=history):
             result = get_trend(days=30)
 
@@ -180,9 +188,9 @@ class TestGetTrendFromJson:
         """Multiple runs on the same day are merged into a single bucket."""
         monkeypatch.delenv("DB_ADAPTER", raising=False)
         history = [
-            _make_entry(date_str="2026-03-30", status="PASS"),
-            _make_entry(date_str="2026-03-30", status="PASS"),
-            _make_entry(date_str="2026-03-30", status="FAIL"),
+            _make_entry(date_str=_days_ago(1), status="PASS"),
+            _make_entry(date_str=_days_ago(1), status="PASS"),
+            _make_entry(date_str=_days_ago(1), status="FAIL"),
         ]
         with patch("src.services.trend_service._load_history", return_value=history):
             result = get_trend(days=30)
@@ -197,7 +205,7 @@ class TestGetTrendFromJson:
         monkeypatch.delenv("DB_ADAPTER", raising=False)
         required_keys = {"date", "total_runs", "pass_runs", "fail_runs",
                          "avg_quality_score", "pass_rate"}
-        history = [_make_entry(date_str="2026-03-30")]
+        history = [_make_entry(date_str=_days_ago(1))]
         with patch("src.services.trend_service._load_history", return_value=history):
             result = get_trend(days=30)
 
@@ -207,7 +215,7 @@ class TestGetTrendFromJson:
     def test_partial_status_counted_as_fail(self, monkeypatch):
         """PARTIAL status (not PASS) is counted in fail_runs."""
         monkeypatch.delenv("DB_ADAPTER", raising=False)
-        history = [_make_entry(date_str="2026-03-30", status="PARTIAL")]
+        history = [_make_entry(date_str=_days_ago(1), status="PARTIAL")]
         with patch("src.services.trend_service._load_history", return_value=history):
             result = get_trend(days=30)
 
@@ -343,7 +351,7 @@ class TestGetTrendFromDb:
         """When the DB adapter raises, get_trend falls back to the JSON path."""
         monkeypatch.setenv("DB_ADAPTER", "oracle")
 
-        history = [_make_entry(date_str="2026-03-30", status="PASS")]
+        history = [_make_entry(date_str=_days_ago(1), status="PASS")]
 
         with patch(
             "src.services.trend_service.get_database_adapter",
